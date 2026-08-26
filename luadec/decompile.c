@@ -2759,14 +2759,13 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			TRY(bstr = RegisterOrConstant(F, b));
 			TRY(cstr = RegisterOrConstant(F, c));
 #endif
-			// FIXME: might need to change from <= to < here
+			// Operator associativity: left operand needs parens if lower precedence; right operand needs parens if equal or lower precedence
 			if ((prio != 1 && bprio <= prio) || (prio == 1 && bstr[0] != '-')) {
 				StringBuffer_add(str, bstr);
 			} else {
 				StringBuffer_addPrintf(str, "(%s)", bstr);
 			}
 			StringBuffer_addPrintf(str, " %s ", oper);
-			// FIXME: being conservative in the use of parentheses
 			if (cprio < prio) {
 				StringBuffer_add(str, cstr);
 			} else {
