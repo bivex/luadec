@@ -20,6 +20,17 @@ Inst extractInstruction(Instruction i) {
 	Inst inst;
 	inst.op = GET_OPCODE(i);
 	inst.a = GETARG_A(i);
+#if LUA_VERSION_NUM == 504
+	inst.b = checkopm(i, iABC) ? GETARG_B(i) : 0;
+	inst.c = checkopm(i, iABC) ? GETARG_C(i) : 0;
+	inst.bx = checkopm(i, iABx) ? GETARG_Bx(i) : 0;
+	inst.sbx = checkopm(i, iAsBx) ? GETARG_sBx(i) : 0;
+	inst.ax = checkopm(i, iAx) ? GETARG_Ax(i) : 0;
+	inst.sj = checkopm(i, isJ) ? GETARG_sJ(i) : 0;
+	inst.k = checkopm(i, iABC) ? GETARG_k(i) : 0;
+	inst.sb = checkopm(i, iABC) ? GETARG_sB(i) : 0;
+	inst.sc = checkopm(i, iABC) ? GETARG_sC(i) : 0;
+#else
 	inst.b = GETARG_B(i);
 	inst.c = GETARG_C(i);
 	inst.bx = GETARG_Bx(i);
@@ -27,24 +38,38 @@ Inst extractInstruction(Instruction i) {
 #if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
 	inst.ax = GETARG_Ax(i);
 #endif
+#endif
 	return inst;
 }
 
 Instruction assembleInstruction(Inst inst) {
-	Instruction i;
+	Instruction i = 0;
 	switch (getOpMode(inst.op)) {
 	case iABC:
+#if LUA_VERSION_NUM == 504
+		i = CREATE_ABCk(inst.op, inst.a, inst.b, inst.c, inst.k);
+#else
 		i = CREATE_ABC(inst.op, inst.a, inst.b, inst.c);
+#endif
 		break;
 	case iABx:
 		i = CREATE_ABx(inst.op, inst.a, inst.bx);
 		break;
 	case iAsBx:
+#if LUA_VERSION_NUM == 504
+		i = CREATE_ABx(inst.op, inst.a, inst.sbx + OFFSET_sBx);
+#else
 		i = CREATE_ABx(inst.op, inst.a, inst.sbx);
+#endif
 		break;
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 502
 	case iAx:
 		i = CREATE_Ax(inst.op, inst.ax);
+		break;
+#endif
+#if LUA_VERSION_NUM == 504
+	case isJ:
+		i = CREATE_sJ(inst.op, inst.sj, inst.k);
 		break;
 #endif
 	}
@@ -67,7 +92,7 @@ void InitOperators() {
 	operators[OP_ADD] = "+"; priorities[OP_ADD] = 4;
 	operators[OP_SUB] = "-"; priorities[OP_SUB] = 4;
 	operators[OP_CONCAT] = ".."; priorities[OP_CONCAT] = 5;
-#if LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM == 503 || LUA_VERSION_NUM == 504
 	operators[OP_BNOT] = "~"; priorities[OP_BNOT] = 2;
 	operators[OP_IDIV] = "//"; priorities[OP_IDIV] = 3;
 	operators[OP_SHL] = "<<"; priorities[OP_SHL] = 6;
@@ -76,12 +101,27 @@ void InitOperators() {
 	operators[OP_BXOR] = "~"; priorities[OP_BXOR] = 8;
 	operators[OP_BOR] = "|"; priorities[OP_BOR] = 9;
 #endif
+#if LUA_VERSION_NUM == 504
+	operators[OP_ADDK] = "+"; priorities[OP_ADDK] = 4;
+	operators[OP_SUBK] = "-"; priorities[OP_SUBK] = 4;
+	operators[OP_MULK] = "*"; priorities[OP_MULK] = 3;
+	operators[OP_MODK] = "%"; priorities[OP_MODK] = 3;
+	operators[OP_POWK] = "^"; priorities[OP_POWK] = 1;
+	operators[OP_DIVK] = "/"; priorities[OP_DIVK] = 3;
+	operators[OP_IDIVK] = "//"; priorities[OP_IDIVK] = 3;
+	operators[OP_BANDK] = "&"; priorities[OP_BANDK] = 7;
+	operators[OP_BXORK] = "~"; priorities[OP_BXORK] = 8;
+	operators[OP_BORK] = "|"; priorities[OP_BORK] = 9;
+#endif
 }
 
 char* convertToUpper(const char* str) {
 	char *newstr, *p;
 	p = newstr = strdup(str);
-	while (*p++ = toupper(*p));
+	while (*p) {
+		*p = toupper((unsigned char)*p);
+		p++;
+	}
 	return newstr;
 }
 
@@ -253,12 +293,12 @@ char* DecompileString(const TValue* o) {
 
 char* DecompileConstant(const Proto* f, int i) {
 	const TValue* o = &f->k[i];
+#if LUA_VERSION_NUM == 501 || LUA_VERSION_NUM == 502
 	switch (ttype(o)) {
 	case LUA_TBOOLEAN:
 		return strdup(bvalue(o)?"true":"false");
 	case LUA_TNIL:
 		return strdup("nil");
-#if LUA_VERSION_NUM == 501 || LUA_VERSION_NUM == 502
 	case LUA_TNUMBER:
 	{
 		char* ret = (char*)calloc(128, sizeof(char));
@@ -270,8 +310,16 @@ char* DecompileConstant(const Proto* f, int i) {
 	case LUA_TLNGSTR:
 #endif
 		return DecompileString(o);
+	default:
+		return strdup("Unknown_Type_Error");
+	}
 #endif
 #if LUA_VERSION_NUM == 503
+	switch (ttype(o)) {
+	case LUA_TBOOLEAN:
+		return strdup(bvalue(o)?"true":"false");
+	case LUA_TNIL:
+		return strdup("nil");
 	case LUA_TNUMFLT:
 	{
 		char* ret = (char*)calloc(128, sizeof(char));
@@ -287,8 +335,30 @@ char* DecompileConstant(const Proto* f, int i) {
 	case LUA_TSHRSTR:
 	case LUA_TLNGSTR:
 		return DecompileString(o);
-#endif
 	default:
 		return strdup("Unknown_Type_Error");
 	}
+#endif
+#if LUA_VERSION_NUM == 504
+	switch (ttype(o)) {
+	case LUA_TNIL:
+		return strdup("nil");
+	case LUA_TBOOLEAN:
+		return strdup((!ttisfalse(o)) ? "true" : "false");
+	case LUA_TNUMBER:
+	{
+		char* ret = (char*)calloc(128, sizeof(char));
+		if (ttisinteger(o)) {
+			sprintf(ret, LUA_INTEGER_FMT, ivalue(o));
+		} else {
+			sprintf(ret, LUA_NUMBER_FMT, fltvalue(o));
+		}
+		return ret;
+	}
+	case LUA_TSTRING:
+		return DecompileString(o);
+	default:
+		return strdup("Unknown_Type_Error");
+	}
+#endif
 }

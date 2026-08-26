@@ -26,3 +26,9 @@
 	branch = 5.3
 	ignore = untracked
 
+[submodule "lua-5.4"]
+	path = lua-5.4
+	url = https://github.com/viruscamp/lua5
+	branch = 5.4
+	ignore = untracked
+

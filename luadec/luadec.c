@@ -340,12 +340,21 @@ Proto* combine(lua_State* L, int n) {
 		f->sizep=n;
 		f->sizecode=2*n+1;
 		f->code=luaM_newvector(L,f->sizecode,Instruction);
+#if LUA_VERSION_NUM == 504
+		for (i=0; i<n; i++) {
+			f->p[i]=toproto(L,i-n);
+			f->code[pc++]=CREATE_ABx(OP_CLOSURE,0,i);
+			f->code[pc++]=CREATE_ABCk(OP_CALL,0,1,1,0);
+		}
+		f->code[pc++]=CREATE_ABCk(OP_RETURN0,0,0,0,0);
+#else
 		for (i=0; i<n; i++) {
 			f->p[i]=toproto(L,i-n);
 			f->code[pc++]=CREATE_ABx(OP_CLOSURE,0,i);
 			f->code[pc++]=CREATE_ABC(OP_CALL,0,1,1);
 		}
 		f->code[pc++]=CREATE_ABC(OP_RETURN,0,1,0);
+#endif
 		if (LDS2) {
 			Inject(f,0);
 			for (i=0; i<n; i++) {
@@ -366,10 +375,13 @@ static void strip(lua_State* L, Proto* f) {
 	luadec_freearray(L, f->upvalues, f->sizeupvalues, TString*);
 	f->upvalues=NULL; f->sizeupvalues=0;
 #endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 502
 	for (i=0; i<f->sizeupvalues; i++) {
 		f->upvalues[i].name=luaS_new(L, "");
 	}
+#endif
+#if LUA_VERSION_NUM == 504
+	f->abslineinfo=NULL; f->sizeabslineinfo=0;
 #endif
 	f->source=luaS_new(L, "");
 	for (i=0; i<n; i++) {

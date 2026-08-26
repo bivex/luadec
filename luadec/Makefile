@@ -86,3 +86,4 @@ luaopswap: luaopswap.o $(LUNDUMP) $(LIBDIR)/liblua.a
 clean:
 	$(RM) *.o *.exe
 	$(RM) allopcodes*
+	$(RM) $T luareplace luaopswap

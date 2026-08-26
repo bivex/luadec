@@ -135,7 +135,11 @@ int GetJmpAddr(Function* F, int addr) {
 		return real_end;
 	}
 	while (GET_OPCODE(F->f->code[real_end]) == OP_JMP) {
+#if LUA_VERSION_NUM == 504
+		real_end = GETARG_sJ(F->f->code[real_end]) + real_end + 1;
+#else
 		real_end = GETARG_sBx(F->f->code[real_end]) + real_end + 1;
+#endif
 	}
 	return real_end;
 }
@@ -903,8 +907,13 @@ DecTable* NewTable(int r, int b, int c, int pc) {
 	InitList(&(self->array));
 	InitList(&(self->keyed));
 	self->reg = r;
+#if LUA_VERSION_NUM == 504
+	self->arraySize = c;
+	self->keyedSize = (b > 0) ? (1 << (b - 1)) : 0;
+#else
 	self->arraySize = luaO_fb2int(b);
 	self->keyedSize = luaO_fb2int(c);
+#endif
 	self->pc = pc;
 	return self;
 }
@@ -1668,7 +1677,11 @@ void listUpvalues(const Proto* f, StringBuffer* str) {
 }
 
 int isTestOpCode(OpCode op) {
+#if LUA_VERSION_NUM == 504
+	return (op == OP_EQ || op == OP_LE || op == OP_LT || op == OP_EQK || op == OP_EQI || op == OP_LTI || op == OP_LEI || op == OP_GTI || op == OP_GEI || op == OP_TEST || op == OP_TESTSET);
+#else
 	return (op == OP_EQ || op == OP_LE || op == OP_LT || op == OP_TEST || op == OP_TESTSET);
+#endif
 }
 
 AstStatement* LeaveBlock(Function* F, AstStatement* currStmt, StatementType type) {
@@ -1874,37 +1887,61 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			continue;
 		}
 
+#if LUA_VERSION_NUM == 504
+		if (o == OP_JMP) {
+			dest = pc + 1 + GETARG_sJ(i);
+		} else if (o == OP_FORPREP) {
+			dest = pc + 1 + GETARG_Bx(i) + 1;
+		} else if (o == OP_FORLOOP) {
+			dest = pc + 1 - GETARG_Bx(i);
+		} else if (o == OP_TFORPREP) {
+			dest = pc + 1 + GETARG_Bx(i);
+		} else if (o == OP_TFORLOOP) {
+			dest = pc + 1 - GETARG_Bx(i);
+		} else {
+			dest = pc + 1;
+		}
+#else
 		dest = sbc + pc + 1;
+#endif
 		real_end = GetJmpAddr(F, pc + 1);
 
 #if LUA_VERSION_NUM == 501
 		if (o == OP_CLOSE) {
 			int startreg = a;
-#endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+			AddToSet(F->do_opens, f->locvars[startreg].startpc);
+			AddToSet(F->do_closes, f->locvars[startreg].endpc);
+		}
+#elif LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
 		if (o == OP_JMP && a > 0) {
 			// instead OP_CLOSE in 5.2 : if (A) close all upvalues >= R(A-1)
 			int startreg = a - 1;
-#endif
 			AddToSet(F->do_opens, f->locvars[startreg].startpc);
 			AddToSet(F->do_closes, f->locvars[startreg].endpc);
-			// continue; // comment out because of 5.2 OP_JMP
 		}
+#elif LUA_VERSION_NUM == 504
+		if (o == OP_CLOSE) {
+			int startreg = a;
+			if (f->locvars && startreg < f->sizelocvars) {
+				AddToSet(F->do_opens, f->locvars[startreg].startpc);
+				AddToSet(F->do_closes, f->locvars[startreg].endpc);
+			}
+		}
+#endif
 
 #if LUA_VERSION_NUM == 501
 		if (o == OP_JMP && pc > 0 && o_1 == OP_TFORLOOP) {
-			// OP_TFORLOOP /* A C	R(A+3), ... ,R(A+2+C) := R(A)(R(A+1), R(A+2));if R(A+3) ~= nil then R(A+2)=R(A+3) else pc++	*/
-			// OP_JMP /* sBx	pc += sBx */
-#endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
-		if (o == OP_TFORLOOP) {
-			// OP_TFORCALL /* A C	R(A+3), ... ,R(A+2+C) := R(A)(R(A+1), R(A+2)); */
-			// OP_TFORLOOP /* A sBx	if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx } */
-#endif
 			LoopItem* item = NewLoopItem(TFORLOOP_STMT, dest-1, dest, dest, pc, real_end);
 			AddToLoopTree(F, item);
 			continue;
 		}
+#else
+		if (o == OP_TFORLOOP) {
+			LoopItem* item = NewLoopItem(TFORLOOP_STMT, dest-1, dest, dest, pc, real_end);
+			AddToLoopTree(F, item);
+			continue;
+		}
+#endif
 
 		if (o == OP_FORLOOP) {
 			LoopItem* item = NewLoopItem(FORLOOP_STMT, dest-1, dest, dest, pc, real_end);
@@ -1991,19 +2028,19 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 
 		F->pc = pc;
 
-		// pop ËùÓÐ endpc < pc µÄ
+		// pop æ‰€æœ‰ endpc < pc çš„
 		while (RvarTop > 0 && f->locvars[Rvar[RvarTop-1]].endpc < pc + 1) {
 			RvarTop--;
 			Rvar[RvarTop] = -1;
 		}
-		// push ËùÓÐ startpc <= pc µÄ£¬ÒÆµ½ÏÂÒ»¸öÎ´Ê¹ÓÃµÄ±äÁ¿
+		// push æ‰€æœ‰ startpc <= pc çš„ï¼Œç§»åˆ°ä¸‹ä¸€ä¸ªæœªä½¿ç”¨çš„å˜é‡
 		while (currLocVar < f->sizelocvars && f->locvars[currLocVar].startpc <= pc + 1) {
 			Rvar[RvarTop] = currLocVar;
 			RvarTop++;
 			currLocVar++;
 			TestLocVarIndex(RvarTop-1, pc);
 		}
-		// ÄÇÃ´´ËÊ± vars[r] ¼´¶ÔÓ¦ reg[r] µÄ±äÁ¿
+		// é‚£ä¹ˆæ­¤æ—¶ vars[r] å³å¯¹åº” reg[r] çš„å˜é‡
 
 		if (pc > F->loop_ptr->end) {
 			next_child = F->loop_ptr->next;
@@ -2027,6 +2064,12 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				case OP_GETTABUP:
 					if (!ISK(c)) {
 						num_nil = MAX(num_nil,c);
+					}
+					break;
+#elif LUA_VERSION_NUM == 504
+				case OP_SETTABUP:
+					if (!GETARG_k(i)) {
+						num_nil = c;
 					}
 					break;
 #endif
@@ -2069,6 +2112,16 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			case iAsBx:
 				fprintf(stddebug, "%d %d", a, sbc);
 				break;
+#if LUA_VERSION_NUM >= 502
+			case iAx:
+				fprintf(stddebug, "%d", GETARG_Ax(i));
+				break;
+#endif
+#if LUA_VERSION_NUM == 504
+			case isJ:
+				fprintf(stddebug, "%d", GETARG_sJ(i));
+				break;
+#endif
 			}
 			fprintf(stddebug, "\n");
 		}
@@ -2180,7 +2233,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			free(ctt);
 			break;
 		}
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 502
 		case OP_LOADKX:
 		{
 			int ax = GETARG_Ax(code[pc+1]);
@@ -2193,6 +2246,40 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_EXTRAARG:
 			break;
 #endif
+#if LUA_VERSION_NUM == 504
+		case OP_LOADI:
+		{
+			StringBuffer_printf(str, "%d", sbc);
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
+			break;
+		}
+		case OP_LOADF:
+		{
+			StringBuffer_printf(str, LUA_NUMBER_FMT, (lua_Number)sbc);
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
+			break;
+		}
+		case OP_LOADFALSE:
+		{
+			TRY(AssignReg(F, a, "false", 0, 1));
+			break;
+		}
+		case OP_LFALSESKIP:
+		{
+			if (PENDING(a)) {
+				TRY(UnsetPending(F, a));
+			}
+			TRY(AssignReg(F, a, "false", 0, 1));
+			ignoreNext = 1;
+			break;
+		}
+		case OP_LOADTRUE:
+		{
+			TRY(AssignReg(F, a, "true", 0, 1));
+			break;
+		}
+#endif
+#if LUA_VERSION_NUM <= 503
 		case OP_LOADBOOL:
 		{
 			if ((F->bools.size == 0) || (c==0)) {
@@ -2218,6 +2305,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				ignoreNext = 1;
 			break;
 		}
+#endif
 		case OP_LOADNIL:
 		{
 			int ra, rb;
@@ -2225,9 +2313,8 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 #if LUA_VERSION_NUM == 501
 			// 5.1	A B	R(A) to R(B) := nil
 			rb = b;
-#endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
-			// 5.2	A B	R(A) to R(A+B) := nil
+#else
+			// 5.2+	A B	R(A) to R(A+B) := nil
 			rb = a + b;
 #endif
 			do {
@@ -2235,13 +2322,18 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			} while (rb >= ra);
 			break;
 		}
-		case OP_VARARG: // Lua5.1 specific.
+		case OP_VARARG:
 		{
 			int i;
+#if LUA_VERSION_NUM == 504
+			int numres = c;
+#else
+			int numres = b;
+#endif
 			/*
 			* Read ... into register.
 			*/
-			if (b==0) {
+			if (numres==0) {
 				IS_VARIABLE(a) = 0; PENDING(a) = 0;
 				TRY(AssignReg(F, a, "...", 0, 1));
 				CALL(a) = 1;
@@ -2249,7 +2341,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				TRY(AssignReg(F, a+1, ".end", 0, 1));
 				CALL(a+1) = 2;
 			} else {
-				for (i = 0; i < b-1; i++) {
+				for (i = 0; i < numres-1; i++) {
 					PENDING(a+i) = 0;
 					TRY(AssignReg(F, a+i, "...", 0, 1));
 					CALL(a+i) = i+1;
@@ -2257,6 +2349,10 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			}
 			break;
 		}
+#if LUA_VERSION_NUM == 504
+		case OP_VARARGPREP:
+			break;
+#endif
 		case OP_GETUPVAL:
 		{
 			/*	A B	R(A) := UpValue[B]				*/
@@ -2290,13 +2386,65 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			free(keystr);
 			break;
 		}
+#elif LUA_VERSION_NUM == 504
+		case OP_GETTABUP:
+		{
+			const char *upvstr = UPVALUE(b);
+			char *keystr = DecompileConstant(F->f, c);
+			StringBuffer_set(str, "");
+			if (strcmp(upvstr, "_ENV")==0) {
+				if (MakeIndex(F, str, keystr, TABLE)!=TABLE) {
+					StringBuffer_prepend(str, upvstr);
+				}
+			} else {
+				StringBuffer_set(str, upvstr);
+				MakeIndex(F, str, keystr, DOT);
+			}
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
+			free(keystr);
+			break;
+		}
+		case OP_GETFIELD:
+		{
+			const char *bstr;
+			char *cstr = DecompileConstant(F->f, c);
+			TRY(bstr = GetR(F, b));
+			if (isIdentifier(bstr)) {
+				StringBuffer_set(str, bstr);
+			} else {
+				StringBuffer_printf(str, "(%s)", bstr);
+			}
+			MakeIndex(F, str, cstr, DOT);
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			free(cstr);
+			break;
+		}
+		case OP_GETI:
+		{
+			const char *bstr;
+			char cstr[32];
+			sprintf(cstr, "%d", c);
+			TRY(bstr = GetR(F, b));
+			if (isIdentifier(bstr)) {
+				StringBuffer_set(str, bstr);
+			} else {
+				StringBuffer_printf(str, "(%s)", bstr);
+			}
+			MakeIndex(F, str, cstr, SQUARE_BRACKET);
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			break;
+		}
 #endif
 		case OP_GETTABLE:
 		{
 			/*	A B C	R(A) := R(B)[RK(C)]				*/
 			const char *bstr;
 			char* cstr;
+#if LUA_VERSION_NUM == 504
+			cstr = luadec_strdup(GetR(F, c));
+#else
 			TRY(cstr = RegisterOrConstant(F, c));
+#endif
 			TRY(bstr = GetR(F, b));
 			if (isIdentifier(bstr)) {
 				StringBuffer_set(str, bstr);
@@ -2340,6 +2488,68 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			free(cstr);
 			break;
 		}
+#elif LUA_VERSION_NUM == 504
+		case OP_SETTABUP:
+		{
+			const char *upvstr = UPVALUE(a);
+			char *keystr = DecompileConstant(F->f, b);
+			char *cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
+			StringBuffer_set(str, "");
+			if (strcmp(upvstr, "_ENV")==0) {
+				if (MakeIndex(F, str, keystr, TABLE)!=TABLE) {
+					StringBuffer_prepend(str, upvstr);
+				}
+			} else {
+				StringBuffer_set(str, upvstr);
+				MakeIndex(F, str, keystr, DOT);
+			}
+			TRY(AssignGlobalOrUpvalue(F, StringBuffer_getRef(str), cstr));
+			free(keystr);
+			free(cstr);
+			break;
+		}
+		case OP_SETFIELD:
+		{
+			const char *astr;
+			char *bstr = DecompileConstant(F->f, b);
+			char *cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
+			int settable;
+			TRY(settable = SetTable(F, a, bstr, cstr));
+			if (!settable) {
+				TRY(astr = GetR(F, a));
+				if (isIdentifier(astr)) {
+					StringBuffer_set(str, astr);
+				} else {
+					StringBuffer_printf(str, "(%s)", astr);
+				}
+				MakeIndex(F, str, bstr, DOT);
+				TRY(AssignGlobalOrUpvalue(F, StringBuffer_getRef(str), cstr));
+			}
+			free(bstr);
+			free(cstr);
+			break;
+		}
+		case OP_SETI:
+		{
+			const char *astr;
+			char bstr[32];
+			sprintf(bstr, "%d", b);
+			char *cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
+			int settable;
+			TRY(settable = SetTable(F, a, bstr, cstr));
+			if (!settable) {
+				TRY(astr = GetR(F, a));
+				if (isIdentifier(astr)) {
+					StringBuffer_set(str, astr);
+				} else {
+					StringBuffer_printf(str, "(%s)", astr);
+				}
+				MakeIndex(F, str, bstr, SQUARE_BRACKET);
+				TRY(AssignGlobalOrUpvalue(F, StringBuffer_getRef(str), cstr));
+			}
+			free(cstr);
+			break;
+		}
 #endif
 		case OP_SETUPVAL:
 		{
@@ -2356,8 +2566,13 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			const char *astr;
 			char *bstr, *cstr;
 			int settable;
+#if LUA_VERSION_NUM == 504
+			bstr = luadec_strdup(GetR(F, b));
+			cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
+#else
 			TRY(bstr = RegisterOrConstant(F, b));
 			TRY(cstr = RegisterOrConstant(F, c));
+#endif
 			/*
 			* first try to add into a table
 			*/
@@ -2391,7 +2606,11 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			*/
 			const char *bstr;
 			char *cstr;
+#if LUA_VERSION_NUM == 504
+			cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
+#else
 			TRY(cstr = RegisterOrConstant(F, c));
+#endif
 			TRY(bstr = GetR(F, b));
 
 			TRY(AssignReg(F, a+1, bstr, PRIORITY(b), 0));
@@ -2411,7 +2630,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_DIV:
 		case OP_POW:
 		case OP_MOD:
-#if LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 503
 		case OP_IDIV:
 		case OP_BAND:
 		case OP_BOR:
@@ -2425,8 +2644,13 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			int prio = priorities[o];
 			int bprio = PRIORITY(b);
 			int cprio = PRIORITY(c);
+#if LUA_VERSION_NUM == 504
+			bstr = luadec_strdup(GetR(F, b));
+			cstr = luadec_strdup(GetR(F, c));
+#else
 			TRY(bstr = RegisterOrConstant(F, b));
 			TRY(cstr = RegisterOrConstant(F, c));
+#endif
 			// FIXME: might need to change from <= to < here
 			if ((prio != 1 && bprio <= prio) || (prio == 1 && bstr[0] != '-')) {
 				StringBuffer_add(str, bstr);
@@ -2443,12 +2667,118 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
 			free(bstr);
 			free(cstr);
+#if LUA_VERSION_NUM == 504
+			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBIN) {
+				ignoreNext = 1;
+			}
+#endif
 			break;
 		}
+#if LUA_VERSION_NUM == 504
+		case OP_ADDK:
+		case OP_SUBK:
+		case OP_MULK:
+		case OP_MODK:
+		case OP_POWK:
+		case OP_DIVK:
+		case OP_IDIVK:
+		case OP_BANDK:
+		case OP_BORK:
+		case OP_BXORK:
+		{
+			char *bstr = luadec_strdup(GetR(F, b));
+			char *cstr = DecompileConstant(F->f, c);
+			const char *oper = operators[o];
+			int prio = priorities[o];
+			int bprio = PRIORITY(b);
+			if ((prio != 1 && bprio <= prio) || (prio == 1 && bstr[0] != '-')) {
+				StringBuffer_add(str, bstr);
+			} else {
+				StringBuffer_addPrintf(str, "(%s)", bstr);
+			}
+			StringBuffer_addPrintf(str, " %s %s", oper, cstr);
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			free(bstr);
+			free(cstr);
+			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINK) {
+				ignoreNext = 1;
+			}
+			break;
+		}
+		case OP_ADDI:
+		{
+			char *bstr = luadec_strdup(GetR(F, b));
+			int sc = sC2int(c);
+			int prio = priorities[OP_ADD];
+			int bprio = PRIORITY(b);
+			if (bprio <= prio) {
+				StringBuffer_add(str, bstr);
+			} else {
+				StringBuffer_addPrintf(str, "(%s)", bstr);
+			}
+			if (sc < 0) {
+				StringBuffer_addPrintf(str, " - %d", -sc);
+			} else {
+				StringBuffer_addPrintf(str, " + %d", sc);
+			}
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			free(bstr);
+			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINI) {
+				ignoreNext = 1;
+			}
+			break;
+		}
+		case OP_SHRI:
+		{
+			char *bstr = luadec_strdup(GetR(F, b));
+			int sc = sC2int(c);
+			int prio = (sc < 0 ? priorities[OP_SHL] : priorities[OP_SHR]);
+			int bprio = PRIORITY(b);
+			if (bprio <= prio) {
+				StringBuffer_add(str, bstr);
+			} else {
+				StringBuffer_addPrintf(str, "(%s)", bstr);
+			}
+			if (sc < 0) {
+				StringBuffer_addPrintf(str, " << %d", -sc);
+			} else {
+				StringBuffer_addPrintf(str, " >> %d", sc);
+			}
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			free(bstr);
+			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINI) {
+				ignoreNext = 1;
+			}
+			break;
+		}
+		case OP_SHLI:
+		{
+			char *bstr = luadec_strdup(GetR(F, b));
+			int sc = sC2int(c);
+			int prio = priorities[OP_SHL];
+			int bprio = PRIORITY(b);
+			StringBuffer_addPrintf(str, "%d << ", sc);
+			if (bprio <= prio) {
+				StringBuffer_add(str, bstr);
+			} else {
+				StringBuffer_addPrintf(str, "(%s)", bstr);
+			}
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			free(bstr);
+			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINI) {
+				ignoreNext = 1;
+			}
+			break;
+		}
+		case OP_MMBIN:
+		case OP_MMBINI:
+		case OP_MMBINK:
+			break;
+#endif
 		case OP_UNM:
 		case OP_NOT:
 		case OP_LEN:
-#if LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 503
 		case OP_BNOT:
 #endif
 		{
@@ -2468,7 +2798,14 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_CONCAT:
 		{
 			int i;
-			for (i = b; i <= c; i++) {
+#if LUA_VERSION_NUM == 504
+			int from_r = a;
+			int to_r = a + b - 1;
+#else
+			int from_r = b;
+			int to_r = c;
+#endif
+			for (i = from_r; i <= to_r; i++) {
 				const char *istr;
 				TRY(istr = GetR(F, i));
 				if (PRIORITY(i) > priorities[o]) {
@@ -2476,7 +2813,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				} else {
 					StringBuffer_add(str, istr);
 				}
-				if (i < c)
+				if (i < to_r)
 					StringBuffer_add(str, " .. ");
 			}
 			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
@@ -2485,7 +2822,11 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_JMP:
 		{
 			// instead OP_CLOSE in 5.2 : if (A) close all upvalues >= R(A-1)
+#if LUA_VERSION_NUM == 504
+			int dest = pc + GETARG_sJ(i) + 1;
+#else
 			int dest = sbc + pc + 1;
+#endif
 			Instruction idest = code[dest];
 			IntListItem* foundInt = (IntListItem*)RemoveFromList(&(F->breaks), FindFromListTail(&(F->breaks), (ListItemCmpFn)MatchIntListItem, &pc));
 			if (foundInt != NULL) { // break
@@ -2594,6 +2935,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				AddAstStatement(F, tforstmt);
 				F->currStmt = tforstmt;
 				break;
+#if LUA_VERSION_NUM <= 503
 			} else if (sbc == 2 && GET_OPCODE(code[pc+2]) == OP_LOADBOOL) {
 				/*
 				* y = (a > b or c) -- assigne statement may be bool or value
@@ -2641,6 +2983,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				fprintf(stderr, " at lua function %s pc=%d\n\n", funcnumstr, pc);
 				fflush(stderr);
 				//pc = dest - 2;
+#endif
 			} else if (sbc == 0) {
 				/* dummy jump -- ignore it */
 				break;
@@ -2670,15 +3013,6 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 					pc = nextpc-1;
 					break;
 				}
-
-				/*
-				if (F->indent > baseIndent) {
-					StringBuffer_printf(str, "do return end");
-					TRY(AddStatement(F, str));
-				} else {
-					pc = dest-2;
-				}
-				*/
 				}
 			}
 			break;
@@ -2687,7 +3021,12 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_LT:
 		case OP_LE:
 		{
-			// WHY can't we remove it
+#if LUA_VERSION_NUM == 504
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char *cstr = luadec_strdup(GetR(F, b));
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(bstr, cstr, o, k, pc+1, -1));
+#else
 			if (ISK(b)) {
 				int swap = b;
 				b = c;
@@ -2697,10 +3036,72 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				else if (o == OP_LE) o = OP_LT;
 			}
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(RegisterOrConstant(F, b), RegisterOrConstant(F, c), o, a, pc+1, -1));
+#endif
 			goto LOGIC_NEXT_JMP;
 			break;
 		}
-		case OP_TESTSET: // Lua5.1 specific TODO: correct it
+#if LUA_VERSION_NUM == 504
+		case OP_EQK:
+		{
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char *cstr = DecompileConstant(F->f, b);
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(bstr, cstr, OP_EQ, k, pc+1, -1));
+			goto LOGIC_NEXT_JMP;
+			break;
+		}
+		case OP_EQI:
+		{
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char cstr[32];
+			sprintf(cstr, "%d", sC2int(b));
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(bstr, luadec_strdup(cstr), OP_EQ, k, pc+1, -1));
+			goto LOGIC_NEXT_JMP;
+			break;
+		}
+		case OP_LTI:
+		{
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char cstr[32];
+			sprintf(cstr, "%d", sC2int(b));
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(bstr, luadec_strdup(cstr), OP_LT, k, pc+1, -1));
+			goto LOGIC_NEXT_JMP;
+			break;
+		}
+		case OP_LEI:
+		{
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char cstr[32];
+			sprintf(cstr, "%d", sC2int(b));
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(bstr, luadec_strdup(cstr), OP_LE, k, pc+1, -1));
+			goto LOGIC_NEXT_JMP;
+			break;
+		}
+		case OP_GTI:
+		{
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char cstr[32];
+			sprintf(cstr, "%d", sC2int(b));
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(cstr), bstr, OP_LT, k, pc+1, -1));
+			goto LOGIC_NEXT_JMP;
+			break;
+		}
+		case OP_GEI:
+		{
+			int k = GETARG_k(i);
+			char *bstr = luadec_strdup(GetR(F, a));
+			char cstr[32];
+			sprintf(cstr, "%d", sC2int(b));
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(cstr), bstr, OP_LE, k, pc+1, -1));
+			goto LOGIC_NEXT_JMP;
+			break;
+		}
+#endif
+		case OP_TESTSET:
 		{
 			const char *ra, *rb;
 
@@ -2711,7 +3112,11 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				TRY(ra = GetR(F, a));
 			}
 			TRY(rb = GetR(F, b));
+#if LUA_VERSION_NUM == 504
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(rb), o, GETARG_k(i), pc + 1, -1));
+#else
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(rb), o, c, pc + 1, -1));
+#endif
 			F->testpending = a + 1;
 			goto LOGIC_NEXT_JMP;
 			break;
@@ -2725,7 +3130,11 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				PENDING(a) = 0;
 				F->testpending = a + 1;
 			}
+#if LUA_VERSION_NUM == 504
+			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(ra), o, GETARG_k(i), pc + 1, -1));
+#else
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(ra), o, c, pc + 1, -1));
+#endif
 			goto LOGIC_NEXT_JMP;
 			break;
 		}
@@ -2737,11 +3146,19 @@ LOGIC_NEXT_JMP:
 			F->pc = pc;
 			i = code[pc];
 			o = GET_OPCODE(i);
+#if LUA_VERSION_NUM == 504
+			if (o == OP_JMP) {
+				dest = pc + GETARG_sJ(i) + 2;
+			} else {
+				dest = pc + 2;
+			}
+#else
 			if (o != OP_JMP) {
 				assert(0);
 			}
 			sbc = GETARG_sBx(i);
 			dest = sbc + pc + 2;
+#endif
 			lastBool = cast(BoolOp*, LastItem(&(F->bools)));
 			lastBool->dest = dest;
 			if (F->testpending) {
@@ -2846,6 +3263,25 @@ LOGIC_NEXT_JMP:
 			}
 			break;
 		}
+#if LUA_VERSION_NUM == 504
+		case OP_RETURN0:
+		{
+			if (pc != n - 1) {
+				AstStatement* returnstmt = MakeStatement(RETURN_STMT, luadec_strdup(""));
+				TRY(AddAstStatement(F, returnstmt));
+			}
+			break;
+		}
+		case OP_RETURN1:
+		{
+			if (pc != n - 1) {
+				const char* astr = GetR(F, a);
+				AstStatement* returnstmt = MakeStatement(RETURN_STMT, luadec_strdup(astr));
+				TRY(AddAstStatement(F, returnstmt));
+			}
+			break;
+		}
+#endif
 		case OP_RETURN:
 		{
 			/*
@@ -2877,12 +3313,16 @@ LOGIC_NEXT_JMP:
 			TRY(AddAstStatement(F, returnstmt));
 			break;
 		}
-		case OP_FORLOOP: //Lua5.1 specific. TODO: CHECK
+		case OP_FORLOOP:
 		{
 			AstStatement* currStmt = F->currStmt;
 
 			int i, r_begin, r_end;
+#if LUA_VERSION_NUM == 504
+			Instruction i_forprep = code[pc - bc];
+#else
 			Instruction i_forprep = code[pc + sbc];
+#endif
 			int a_forprep = GETARG_A(i_forprep);
 			assert(GET_OPCODE(i_forprep)==OP_FORPREP);
 			r_begin = a_forprep;
@@ -2898,20 +3338,17 @@ LOGIC_NEXT_JMP:
 			F->currStmt = LeaveBlock(F, currStmt, FORLOOP_STMT);
 			break;
 		}
-		case LUADEC_TFORLOOP: // TODO: CHECK
+		case LUADEC_TFORLOOP:
 		{
-			// 5.1 OP_TFORLOOP	A C		R(A+3), ... ,R(A+2+C) := R(A)(R(A+1), R(A+2));
-			//	if R(A+3) ~= nil then R(A+2)=R(A+3) else pc++
-			// 5.1 OP_JMP sBx	pc += sBx
-
-			// 5.2 OP_TFORCALL	A C		R(A+3), ... ,R(A+2+C) := R(A)(R(A+1), R(A+2));
-			// 5.2 OP_TFORLOOP	A sBx	if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx }
-
 			AstStatement* currStmt = F->currStmt;
 
 			int i, r_begin, r_end;
 			r_begin = a;
+#if LUA_VERSION_NUM == 504
+			r_end = a+3+c;
+#else
 			r_end = a+2+c;
+#endif
 			for (i=r_begin; i<=r_end; i++)
 			{
 				IS_VARIABLE(i)=0;
@@ -2929,7 +3366,72 @@ LOGIC_NEXT_JMP:
 		case OP_TFORLOOP:
 			break;
 #endif
-		case OP_FORPREP: //Lua5.1 specific. TODO: CHECK
+#if LUA_VERSION_NUM == 504
+		case OP_TFORPREP:
+		{
+			int i;
+			const char *generator;
+			const char* vname[40];
+			AstStatement* tforstmt = NULL;
+			int target_call = pc + 1 + bc;
+			Instruction idest = code[target_call];
+			int tf_a = GETARG_A(idest);
+			int tf_c = GETARG_C(idest);
+
+			generator = GetR(F, tf_a);
+			for (i = 1; i <= tf_c; i++) {
+				int var_reg = tf_a + 3 + i;
+				if (!IS_VARIABLE(var_reg)) {
+					int i2, loopvars = 0;
+					vname[i-1] = NULL;
+					for (i2 = 0; i2 < f->sizelocvars; i2++) {
+						if (f->locvars[i2].startpc == pc + 1) {
+							loopvars++;
+							if (loopvars == i) {
+								vname[i-1] = LOCAL(i2);
+								break;
+							}
+						}
+					}
+					if (vname[i-1] == NULL) {
+						char tmp[16];
+						sprintf(tmp, "i_%d", i);
+						TRY(DeclareVariable(F, tmp, var_reg));
+						vname[i-1] = F->R[var_reg];
+					}
+				} else {
+					vname[i-1] = F->R[var_reg];
+				}
+				F->Rinternal[var_reg] = 1;
+			}
+			DeclarePendingLocals(F);
+
+			StringBuffer_printf(str, "%s", vname[0]);
+			for (i = 2; i <= tf_c; i++) {
+				StringBuffer_addPrintf(str, ", %s", vname[i-1]);
+			}
+			StringBuffer_addPrintf(str, " in %s", generator);
+
+			F->Rinternal[tf_a] = 1;
+			F->Rinternal[tf_a + 1] = 1;
+			F->Rinternal[tf_a + 2] = 1;
+			F->Rinternal[tf_a + 3] = 1;
+
+			if (next_child && next_child->type == TFORLOOP_STMT) {
+				tforstmt = next_child->block;
+				tforstmt->code = StringBuffer_getBuffer(str);
+				AddAstStatement(F, tforstmt);
+				F->currStmt = tforstmt;
+			}
+			break;
+		}
+		case OP_TFORCALL:
+			break;
+		case OP_TBC:
+		case OP_CLOSE:
+			break;
+#endif
+		case OP_FORPREP:
 			{
 				/*
 				* numeric 'for'
@@ -2974,16 +3476,8 @@ LOGIC_NEXT_JMP:
 				* its name in the locals table.
 				*/
 
-
-
-				//initial = luadec_strdup(initial);
 				step = atoi(REGISTER(a + 2));
 				stepLen = strlen(REGISTER(a + 2));
-				// findSign = strrchr(initial, '-');
-
-				// if (findSign) {
-				//    initial[strlen(initial) - stepLen - 3] = '\0';
-				// }
 
 				if (step == 1) {
 					StringBuffer_printf(str, "%s = %s, %s",
@@ -3004,7 +3498,7 @@ LOGIC_NEXT_JMP:
 				if (next_child->type != FORLOOP_STMT) {
 					fprintf(stderr, "next_child->type != FORLOOP_STMT\n");
 				}
-				forstmt = next_child->block; // TODO check FORLOOP_STMT
+				forstmt = next_child->block;
 				forstmt->code = StringBuffer_getBuffer(str);
 				AddAstStatement(F, forstmt);
 				F->currStmt = forstmt;
@@ -3012,6 +3506,17 @@ LOGIC_NEXT_JMP:
 			}
 		case OP_SETLIST:
 		{
+#if LUA_VERSION_NUM == 504
+			if (GETARG_k(i)) {
+				Instruction i_next_arg = code[pc + 1];
+				ignoreNext = 1;
+				if (GET_OPCODE(i_next_arg) == OP_EXTRAARG) {
+					c += GETARG_Ax(i_next_arg) * (MAXARG_C + 1);
+				} else {
+					SET_ERROR(F, "SETLIST with k==1, but not followed by EXTRAARG.");
+				}
+			}
+#else
 			if (c == 0) {
 				Instruction i_next_arg = code[pc + 1];
 				ignoreNext = 1;
@@ -3026,6 +3531,7 @@ LOGIC_NEXT_JMP:
 				}
 #endif
 			}
+#endif
 			TRY(SetList(F, a, b, c));
 			break;
 		}
@@ -3047,7 +3553,11 @@ LOGIC_NEXT_JMP:
 			int i;
 			int uvn;
 			int cfnum = functionnum;
+#if LUA_VERSION_NUM == 504
+			Proto* cf = f->p[bc];
+#else
 			Proto* cf = f->p[c];
+#endif
 			char* tmpname = (char*)calloc(strlen(funcnumstr) + 64, sizeof(char));
 
 			uvn = NUPS(cf);
@@ -3075,14 +3585,13 @@ LOGIC_NEXT_JMP:
 					OpCode op = GET_OPCODE(ins);
 					int b = GETARG_B(ins);
 #endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+#if LUA_VERSION_NUM >= 502
 					Upvaldesc upval = cf->upvalues[i];
 					int b = upval.idx;
 #endif
 #if LUA_VERSION_NUM == 501
 					if (op == OP_MOVE) {
-#endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+#else
 					if (upval.instack == 1) {
 #endif
 						// Rvar[b] is enough
@@ -3098,8 +3607,7 @@ LOGIC_NEXT_JMP:
 
 #if LUA_VERSION_NUM == 501
 					} else if (op == OP_GETUPVAL) {
-#endif
-#if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
+#else
 					} else if (upval.instack == 0) {
 #endif
 						// Get name from upvalue name
@@ -3123,17 +3631,31 @@ LOGIC_NEXT_JMP:
 			if (func_checking) {
 				char* code = NULL;
 				char* newfuncnumstr = (char*)calloc(strlen(funcnumstr) + 12, sizeof(char));
+#if LUA_VERSION_NUM == 504
+				functionnum = bc;
+				sprintf(newfuncnumstr, "%s_%d", funcnumstr, bc);
+#else
 				functionnum = c;
 				sprintf(newfuncnumstr, "%s_%d", funcnumstr, c);
+#endif
 				code = PrintFunctionOnlyParamsAndUpvalues(cf, F->indent, newfuncnumstr);
 				StringBuffer_setBuffer(str, code);
 			} else if (!process_sub) {
+#if LUA_VERSION_NUM == 504
+				StringBuffer_printf(str, "DecompiledFunction_%s_%d", funcnumstr, bc);
+#else
 				StringBuffer_printf(str, "DecompiledFunction_%s_%d", funcnumstr, c);
+#endif
 			} else {
 				char* code = NULL;
 				char* newfuncnumstr = (char*)calloc(strlen(funcnumstr) + 12, sizeof(char));
+#if LUA_VERSION_NUM == 504
+				functionnum = bc;
+				sprintf(newfuncnumstr, "%s_%d", funcnumstr, bc);
+#else
 				functionnum = c;
 				sprintf(newfuncnumstr, "%s_%d", funcnumstr, c);
+#endif
 				code = ProcessCode(cf, F->indent, 0, newfuncnumstr);
 				StringBuffer_setBuffer(str, code);
 			}
