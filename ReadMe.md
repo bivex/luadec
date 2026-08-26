@@ -1,67 +1,101 @@
 Overview
 ========
 
-LuaDec is a Lua decompiler for lua 5.1 , and experimental for lua 5.2 and 5.3.
+LuaDec is a Lua decompiler for **Lua 5.1**, **Lua 5.2**, **Lua 5.3**, **Lua 5.4**, and **Lua 5.5**.
 
-It is based on Hisham Muhammad's luadec which targeted lua 5.0.x and LuaDec51 by Zsolt Sz. Sztupak.
+It is based on Hisham Muhammad's luadec which targeted Lua 5.0.x and LuaDec51 by Zsolt Sz. Sztupak.
 
 LuaDec is free software and uses the same license as the original LuaDec.
 
 
+Supported Versions
+------------------
+* **Lua 5.1** (Full support)
+* **Lua 5.2** (Full support)
+* **Lua 5.3** (Full support)
+* **Lua 5.4** (Full support: 83 opcodes, `TFORPREP`/`TFORCALL`/`TFORLOOP`, `sJ`/`k` formats, to-be-closed variables)
+* **Lua 5.5** (Full support: `ivABC` format, `OP_GETVARG`, `OP_ERRNNIL`, updated `TFOR` register layouts)
+
+
 Compiling
 ---------
-```
-git clone https://github.com/viruscamp/luadec
-cd luadec
-git submodule update --init lua-5.1
-cd lua-5.1
-make linux
+
+### macOS / Linux
+
+To build `luadec` for a specific Lua version:
+
+```bash
+# 1. Compile the respective Lua engine (e.g., 5.4 or 5.5)
+cd lua-5.4       # or lua-5.1, lua-5.2, lua-5.3, lua-5.5
+make macosx      # or make linux
+
+# 2. Compile LuaDec utilities (luadec, luareplace, luaopswap)
 cd ../luadec
-make LUAVER=5.1
+make LUAVER=5.4  # or LUAVER=5.1, LUAVER=5.2, LUAVER=5.3, LUAVER=5.5
 ```
 
-If you want to build it for lua 5.2 or 5.3 , just replace 5.1 above to 5.2 or 5.3.
+### Windows (Visual Studio)
+Project files are provided for Visual Studio (`vcproj-5.1`, `vcproj-5.2`, `vcproj-5.3`).
 
-There are also project files for vc2008, tested for vc2008 and vc2013.  
-Before compiling, make sure there are correct sources in lua-5.1 , lua-5.2 or lua-5.3.
+
+Tools Included
+--------------
+* **`luadec`** — Bytecode decompiler & disassembler.
+* **`luareplace`** — Tool to replace functions inside compiled `.luac` files.
+* **`luaopswap`** — Tool to swap opcode order in Lua chunks.
 
 
 Usage
 -----
-* decompile lua binary file:  
-  luadec abc.luac  
-* decompile lua source file for testing and comparing:  
-    luadec abc.lua  
-* disassemble lua source or binary  
-    luadec -dis abc.lua  
-* -pn print nested functions structure, could be used by -fn  
-```
-luadec -pn test.lua
-0
-  0_0
-    0_0_0
-  0_1
-```
-* -f decompile only specific nested function  
-    luadec -f 0_1 test.lua  
-* -ns donot process sub functions  
-    luadec -ns -f 0_1 test.lua  
-* -fc perform a instruction-by-instruction compare for each function  
-    luadec -fc test.lua  
-outputs:  
--- function check pass 0  
--- function check fail 0_0 : cannot compile  
--- function check fail 0_1 :  different code size; sizecode org: 66, decompiled: 67, same: 47;   
 
-There are some more options, usually for debug purposes, or for cases where the built in local guesser guesses wrong.
-Use -h to get a complete list of usable parameters
+* **Decompile a compiled binary chunk (`.luac` ➔ `.lua`):**
+  ```bash
+  luadec script.luac > script_decompiled.lua
+  ```
+
+* **Decompile a Lua source file directly:**
+  ```bash
+  luadec script.lua
+  ```
+
+* **Disassemble bytecode to human-readable assembly:**
+  ```bash
+  luadec -dis script.luac
+  ```
+
+* **Print nested function hierarchy:**
+  ```bash
+  luadec -pn script.luac
+  # 0
+  #   0_0
+  #     0_0_0
+  #   0_1
+  ```
+
+* **Decompile only a specific nested function:**
+  ```bash
+  luadec -f 0_1 script.luac
+  ```
+
+* **Disable processing sub-functions:**
+  ```bash
+  luadec -ns -f 0_1 script.luac
+  ```
+
+* **Compare decompiled output against original bytecode:**
+  ```bash
+  luadec -fc script.luac
+  ```
+
+* **Disable built-in local variable guessing (use debug symbols):**
+  ```bash
+  luadec -dg script.luac
+  ```
 
 
 Credits
 -------
 
-Original by Hisham Muhammad (http://luadec.luaforge.net)
- 
-Ongoing port to Lua 5.1 by Zsolt Sz. Sztupak (https://github.com/sztupy/luadec51/)
-
-The internals of Lua5.1 was learned from Kein-Hong Man's A No-Frills Introduction to Lua 5.1 VM Instructions
+* Original by **Hisham Muhammad** (http://luadec.luaforge.net)
+* Ongoing port to Lua 5.1 by **Zsolt Sz. Sztupak** (https://github.com/sztupy/luadec51/)
+* Lua 5.2, 5.3, 5.4, and 5.5 enhancements by **VirusCamp** and contributors.
