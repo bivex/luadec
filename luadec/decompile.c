@@ -654,6 +654,9 @@ void FlushBoolean(Function* F) {
 		FlushWhile1(F);
 	}
 	while (F->bools.size > 0) {
+		if (F->testpending && F->testjump > F->pc) {
+			break;
+		}
 		AstStatement* whilestmt = NULL;
 		int endif = 0, thenaddr = 0;
 		char* test = NULL;
@@ -730,6 +733,11 @@ void AssignGlobalOrUpvalue(Function* F, const char* dest, const char* src) {
 }
 
 void AssignReg(Function* F, int reg, const char* src, int prio, int mayTest) {
+	if (reg < 0 || reg >= MAXARG_A) {
+		sprintf(errortmp, "Invalid register: R%d in 'AssignReg'", reg);
+		SET_ERROR(F, errortmp);
+		return;
+	}
 	char* dest = REGISTER(reg);
 	char* nsrc = NULL;
 
@@ -754,7 +762,7 @@ void AssignReg(Function* F, int reg, const char* src, int prio, int mayTest) {
 	}
 
 	nsrc = luadec_strdup(src);
-	if (F->testpending == reg+1 && mayTest && F->testjump == F->pc+2) {
+	if (F->testpending == reg+1 && mayTest && F->testjump >= F->pc) {
 		int thenaddr, endif;
 		char* test = OutputBoolean(F, &thenaddr, &endif, 1);
 		if (error) {
@@ -889,7 +897,7 @@ char* PrintTable(Function* F, int r, int returnCopy) {
 	}
 	StringBuffer_addChar(str, '}');
 	PENDING(r) = 0;
-	AssignReg(F, r, StringBuffer_getRef(str), 0, 0);
+	AssignReg(F, r, StringBuffer_getRef(str), 0, 1);
 	if (error) {
 		result = NULL;
 	} else if (returnCopy) {
@@ -949,9 +957,9 @@ void SetList(Function* F, int a, int b, int c) {
 	if (b == 0) {
 		const char* rstr;
 		i = 1;
-		while (1) {
+		while (a + i < MAXARG_A) {
 			rstr = GetR(F, a + i);
-			if (error)
+			if (error || rstr == NULL)
 				return;
 			if (strcmp(rstr,".end") == 0)
 				break;
@@ -960,15 +968,18 @@ void SetList(Function* F, int a, int b, int c) {
 		};
 	} //should be {...} or func(func()) ,when b == 0, that will use all avaliable reg from R(a)
 
-	for (i = 1; i <= b; i++) {
+	for (i = 1; i <= b && a + i < MAXARG_A; i++) {
 		const char* rstr = GetR(F, a + i);
-		if (error)
+		if (error || rstr == NULL)
 			return;
 		AddToTable(F, tbl, rstr, NULL); // Lua5.1 specific TODO: it's not really this :(
 	}
 }
 
 void UnsetPending(Function* F, int r) {
+	if (r < 0 || r >= MAXARG_A) {
+		return;
+	}
 	if (!IS_VARIABLE(r)) {
 		if (!PENDING(r) && !CALL(r)) {
 			if (guess_locals) {
@@ -1077,6 +1088,7 @@ void DeleteFunction(Function* self) {
 	int i;
 	DeleteAstStatement(self->funcBlock);
 	ClearList(&(self->bools), (ListItemFn)ClearBoolOp);
+	ClearList(&(self->tables), (ListItemFn)DeleteTable);
 	/*
 	* clean up registers
 	*/
@@ -1103,6 +1115,11 @@ void DeleteFunction(Function* self) {
 void DeclareVariable(Function* F, const char* name, int reg);
 
 const char* GetR(Function* F, int r) {
+	if (r < 0 || r >= MAXARG_A) {
+		sprintf(errortmp, "Invalid register: R%d in 'GetR'", r);
+		SET_ERROR(F, errortmp);
+		return NULL;
+	}
 	if (IS_TABLE(r)) {
 		PrintTable(F, r, 0);
 		if (error) return NULL;
@@ -1119,6 +1136,9 @@ const char* GetR(Function* F, int r) {
 }
 
 void DeclareVariable(Function* F, const char* name, int reg) {
+	if (reg < 0 || reg >= MAXARG_A) {
+		return;
+	}
 	IS_VARIABLE(reg) = 1;
 	if (F->R[reg]) {
 		free(F->R[reg]);
@@ -1275,7 +1295,7 @@ void DeclareLocals(Function* F) {
 	}
 	loopconvert = 0;
 	for (i = startparams; i < F->f->sizelocvars; i++) {
-		if (F->f->locvars[i].startpc == F->pc) {
+		if (F->f->locvars[i].startpc == F->pc || F->f->locvars[i].startpc == F->pc + 1) {
 			const char* varname = getLocalName(F->f, i);
 			if (varname && varname[0] == '(') {
 				continue;
@@ -1533,8 +1553,11 @@ void ShowState(Function* F) {
 #define TRY(x)  x; if (error) goto errorHandler
 
 void DeclareLocal(Function* F, int ixx, const char* value) {
+	if (ixx < 0 || ixx >= MAXARG_A) {
+		return;
+	}
 	if (!IS_VARIABLE(ixx)) {
-		char x[10];
+		char x[32];
 		StringBuffer* str = StringBuffer_new(NULL);
 
 		sprintf(x,"l_%d_%d",functionnum, ixx);
@@ -3579,12 +3602,7 @@ LOGIC_NEXT_JMP:
 			*/
 			int i;
 			int uvn;
-			int cfnum = functionnum;
-#if LUA_VERSION_NUM >= 504
 			Proto* cf = f->p[bc];
-#else
-			Proto* cf = f->p[c];
-#endif
 			char* tmpname = (char*)calloc(strlen(funcnumstr) + 64, sizeof(char));
 
 			uvn = NUPS(cf);
@@ -3658,31 +3676,17 @@ LOGIC_NEXT_JMP:
 			if (func_checking) {
 				char* code = NULL;
 				char* newfuncnumstr = (char*)calloc(strlen(funcnumstr) + 12, sizeof(char));
-#if LUA_VERSION_NUM >= 504
 				functionnum = bc;
 				sprintf(newfuncnumstr, "%s_%d", funcnumstr, bc);
-#else
-				functionnum = c;
-				sprintf(newfuncnumstr, "%s_%d", funcnumstr, c);
-#endif
 				code = PrintFunctionOnlyParamsAndUpvalues(cf, F->indent, newfuncnumstr);
 				StringBuffer_setBuffer(str, code);
 			} else if (!process_sub) {
-#if LUA_VERSION_NUM >= 504
 				StringBuffer_printf(str, "DecompiledFunction_%s_%d", funcnumstr, bc);
-#else
-				StringBuffer_printf(str, "DecompiledFunction_%s_%d", funcnumstr, c);
-#endif
 			} else {
 				char* code = NULL;
 				char* newfuncnumstr = (char*)calloc(strlen(funcnumstr) + 12, sizeof(char));
-#if LUA_VERSION_NUM >= 504
 				functionnum = bc;
 				sprintf(newfuncnumstr, "%s_%d", funcnumstr, bc);
-#else
-				functionnum = c;
-				sprintf(newfuncnumstr, "%s_%d", funcnumstr, c);
-#endif
 				code = ProcessCode(cf, F->indent, 0, newfuncnumstr);
 				StringBuffer_setBuffer(str, code);
 			}

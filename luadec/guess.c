@@ -101,10 +101,6 @@ int luaU_guess_locals(Proto* f, int main) {
 	int func_endpc = FUNC_BLOCK_END(f);
 	int ignoreNext = 0;
 
-	if (f->lineinfo != NULL) {
-		return 0;
-	}
-
 	if (f->sizelocvars > 0) {
 		return 0;
 	}
@@ -723,7 +719,7 @@ int luaU_guess_locals(Proto* f, int main) {
 		while (blocklist.size > 0 && last(blocklist) <= pc+1) {
 			intArray_Pop(&blocklist);
 		}
-		if (blocklist.size == 0) {
+		if (blocklist.size == 0 && pc < f->sizecode - 1) {
 			fprintf(stderr, "cannot find blockend > %d , pc = %d, f->sizecode = %d\n", pc+1, pc, f->sizecode);
 		}
 		while ((lastfree!=0) && (regblock[lastfree-1] <= pc+1)) {
@@ -740,7 +736,7 @@ int luaU_guess_locals(Proto* f, int main) {
 		if (f->sizelocvars>0) {
 			f->locvars = luaM_newvector(glstate,f->sizelocvars,LocVar);
 			for (i = 0; i < length; i++) {
-				char names[10];
+				char names[32];
 				sprintf(names,"l_%d_%d",main,i);
 				f->locvars[i].varname = luaS_new(glstate, names);
 				f->locvars[i].startpc = locallist.values[i].startpc;
