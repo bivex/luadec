@@ -16,7 +16,7 @@
 #define ENCODINGS "ASCII GB2312 GBK GB18030 BIG5 UTF8"
 
 #define GLOBAL(r) ((char*)svalue(&f->k[r]))
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 #define opstr(o) (((o)==OP_EQ||(o)==OP_EQK||(o)==OP_EQI)?"==":((o)==OP_LE||(o)==OP_LEI)?"<=":((o)==OP_LT||(o)==OP_LTI)?"<":(o)==OP_GTI?">":(o)==OP_GEI?">=":(((o)==OP_TEST)||((o)==OP_TESTSET))?NULL:"?")
 #define invopstr(o) (((o)==OP_EQ||(o)==OP_EQK||(o)==OP_EQI)?"~=":((o)==OP_LE||(o)==OP_LEI)?">":((o)==OP_LT||(o)==OP_LTI)?">=":(o)==OP_GTI?"<=":(o)==OP_GEI?"<":(((o)==OP_TEST)||((o)==OP_TESTSET))?"not":"?")
 #else
@@ -42,7 +42,7 @@ struct Inst_ {
 #if LUA_VERSION_NUM >= 502
 	int ax;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	int sj;
 	int k;
 	int sb;

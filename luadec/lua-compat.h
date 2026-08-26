@@ -49,7 +49,7 @@
 	#define MAXREGS 250
 	#define MAXSTACK MAXREGS
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	#include "lopnames.h"
 	#define luaP_opnames opnames
 	#define LUADEC_TFORLOOP OP_TFORLOOP
@@ -62,6 +62,25 @@
 	#ifndef BITRK
 		#define BITRK (1 << 7)
 	#endif
+#endif
+#if LUA_VERSION_NUM >= 505
+	#define IS_VARARG(f) (isvararg(f))
+	#define GETARG_vB_COMPAT(i) GETARG_vB(i)
+	#define GETARG_vC_COMPAT(i) GETARG_vC(i)
+	#define TFOR_VAR_OFFSET 2
+	#define TFOR_INTERNAL_NUM 3
+	#ifndef lua_lock
+		#define lua_lock(L) ((void) 0)
+	#endif
+	#ifndef lua_unlock
+		#define lua_unlock(L) ((void) 0)
+	#endif
+#else
+	#define IS_VARARG(f) (f->is_vararg)
+	#define GETARG_vB_COMPAT(i) GETARG_B(i)
+	#define GETARG_vC_COMPAT(i) GETARG_C(i)
+	#define TFOR_VAR_OFFSET 3
+	#define TFOR_INTERNAL_NUM 4
 #endif
 
 #endif // #ifndef LUADEC_LUA_COMPAT_H

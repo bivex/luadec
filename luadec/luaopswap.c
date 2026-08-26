@@ -260,7 +260,7 @@ int CompareAndGenOpcodes(const Proto* input_proto, const Proto* allopcodes_proto
 		diff++;
 		strcat(errorstr, " different upvalues size;");
 	}
-	if (input_proto->is_vararg != allopcodes_proto->is_vararg) {
+	if (IS_VARARG(input_proto) != IS_VARARG(allopcodes_proto)) {
 		diff++;
 		strcat(errorstr, " different is_vararg;");
 	}

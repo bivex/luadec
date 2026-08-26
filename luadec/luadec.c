@@ -340,7 +340,7 @@ Proto* combine(lua_State* L, int n) {
 		f->sizep=n;
 		f->sizecode=2*n+1;
 		f->code=luaM_newvector(L,f->sizecode,Instruction);
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		for (i=0; i<n; i++) {
 			f->p[i]=toproto(L,i-n);
 			f->code[pc++]=CREATE_ABx(OP_CLOSURE,0,i);
@@ -380,7 +380,7 @@ static void strip(lua_State* L, Proto* f) {
 		f->upvalues[i].name=luaS_new(L, "");
 	}
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	f->abslineinfo=NULL; f->sizeabslineinfo=0;
 #endif
 	f->source=luaS_new(L, "");

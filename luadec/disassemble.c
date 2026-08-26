@@ -63,7 +63,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 	printf("; Defined at line: %d\n", f->linedefined);
 	printf("; #Upvalues:       %d\n", NUPS(f));
 	printf("; #Parameters:     %d\n", f->numparams);
-	printf("; Is_vararg:       %d\n", f->is_vararg);
+	printf("; Is_vararg:       %d\n", IS_VARARG(f));
 	printf("; Max Stack Size:  %d\n", f->maxstacksize);
 	printf("\n");
 
@@ -115,7 +115,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			break;
 		}
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_LOADI:
 			sprintf(line, "R%d %d", a, sbc);
 			StringBuffer_printf(lend, "R%d := %d", a, sbc);
@@ -167,7 +167,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			break;
 		}
 		case OP_VARARG:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			b = GETARG_C(i);
 #endif
 			/*	A B	R(A), R(A+1), ..., R(A+B-2) = vararg		*/
@@ -180,7 +180,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 				StringBuffer_printf(lend, "R%d to top := ...", a);
 			}
 			break;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_VARARGPREP:
 			sprintf(line, "%d", a);
 			StringBuffer_printf(lend, "varargprep (params = %d)", a);
@@ -206,7 +206,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"R%d := U%d[%s]",a,b,tmpconstant1);
 			break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_GETTABUP:
 			sprintf(line,"R%d U%d K%d",a,b,c);
 			tmpconstant1 = DecompileConstant(f, c);
@@ -223,7 +223,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			break;
 #endif
 		case OP_GETTABLE:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			sprintf(line,"R%d R%d R%d",a,b,c);
 			StringBuffer_printf(lend,"R%d := R%d[R%d]",a,b,c);
 #else
@@ -249,7 +249,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"U%d[%s] := %s",a,tmpconstant1,tmpconstant2);
 			break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_SETTABUP:
 		{
 			int k = GETARG_k(i);
@@ -298,7 +298,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"U%d := R%d",b,a);
 			break;
 		case OP_SETTABLE:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		{
 			int k = GETARG_k(i);
 			if (k) {
@@ -325,7 +325,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"R%d := {} (size = %d,%d)",a,b,c);
 			break;
 		case OP_SELF:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		{
 			int k = GETARG_k(i);
 			if (k) {
@@ -359,7 +359,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 		case OP_SHL:
 		case OP_SHR:
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			sprintf(line,"R%d R%d R%d",a,b,c);
 			StringBuffer_printf(lend,"R%d := R%d %s R%d",a,b,operators[o],c);
 #else
@@ -369,7 +369,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"R%d := %s %s %s",a,tmpconstant1,operators[o],tmpconstant2);
 #endif
 			break;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_ADDK:
 		case OP_SUBK:
 		case OP_MULK:
@@ -425,7 +425,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"R%d := %sR%d",a,operators[o],b);
 			break;
 		case OP_CONCAT:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			/*	A B	R(A) := R(A).. ... ..R(A + B - 1)		*/
 			sprintf(line,"R%d %d",a,b);
 			StringBuffer_printf(lend,"R%d := concat(R%d to R%d)",a,a,a+b-1);
@@ -436,7 +436,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 #endif
 			break;
 		case OP_JMP:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			dest = pc + GETARG_sJ(i) + 1;
 			sprintf(line, "%d", GETARG_sJ(i));
 			StringBuffer_printf(lend, "PC += %d (goto %d)", GETARG_sJ(i), dest);
@@ -459,7 +459,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 		case OP_EQ:
 		case OP_LT:
 		case OP_LE:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		{
 			int k = GETARG_k(i);
 			dest = (GET_OPCODE(f->code[pc+1]) == OP_JMP ? GETARG_sJ(f->code[pc+1]) + pc + 2 : pc + 2);
@@ -475,7 +475,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"if %s %s %s then goto %d else goto %d",tmpconstant1,(a?invopstr(o):opstr(o)),tmpconstant2,pc+2,dest);
 			break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_EQK:
 		{
 			int k = GETARG_k(i);
@@ -499,7 +499,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 		}
 #endif
 		case OP_TEST:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		{
 			int k = GETARG_k(i);
 			dest = (GET_OPCODE(f->code[pc+1]) == OP_JMP ? GETARG_sJ(f->code[pc+1]) + pc + 2 : pc + 2);
@@ -515,7 +515,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			break;
 #endif
 		case OP_TESTSET:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		{
 			int k = GETARG_k(i);
 			dest = (GET_OPCODE(f->code[pc+1]) == OP_JMP ? GETARG_sJ(f->code[pc+1]) + pc + 2 : pc + 2);
@@ -556,7 +556,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			}
 			StringBuffer_printf(lend,"%s := R%d(%s)",tmp2,a,tmp);
 			break;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_RETURN0:
 			sprintf(line, "");
 			StringBuffer_printf(lend, "return");
@@ -582,7 +582,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"return %s",tmp);
 			break;
 		case OP_FORLOOP:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			dest = pc + 1 - bc;
 			sprintf(line, "R%d %d", a, bc);
 			StringBuffer_printf(lend, "R%d forloop; goto %d", a, dest);
@@ -593,7 +593,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 #endif
 			break;
 		case OP_FORPREP:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			dest = pc + 1 + bc + 1;
 			sprintf(line, "R%d %d", a, bc);
 			StringBuffer_printf(lend, "R%d forprep; goto %d", a, dest);
@@ -603,7 +603,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 #endif
 			break;
 		case LUADEC_TFORLOOP:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			dest = pc + 1 - bc;
 			sprintf(line, "R%d %d", a, bc);
 			StringBuffer_printf(lend, "if R%d+2 ~= nil then { R%d=R%d+2; goto %d }", a, a, a, dest);
@@ -631,7 +631,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			StringBuffer_printf(lend,"if R%d ~= nil then { R%d := R%d ; pc += %d (goto %d) }",a+1,a, a+1, sbc, dest);
 			break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_TFORPREP:
 			dest = pc + 1 + bc;
 			sprintf(line, "R%d %d", a, bc);
@@ -639,7 +639,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 			break;
 		case OP_TFORCALL:
 			sprintf(line, "R%d %d", a, c);
-			StringBuffer_printf(lend, "R%d to R%d := R%d(R%d, R%d)", a+4, a+3+c, a, a+1, a+2);
+			StringBuffer_printf(lend, "R%d to R%d := R%d(R%d, R%d)", a + TFOR_VAR_OFFSET + 1, a + TFOR_VAR_OFFSET + c, a, a+1, a+2);
 			break;
 		case OP_TBC:
 			sprintf(line, "R%d", a);
@@ -648,7 +648,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 #endif
 		case OP_SETLIST:
 		{
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			int k = GETARG_k(i);
 			unsigned int realc = c;
 			if (k) {
@@ -724,6 +724,16 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 				StringBuffer_printf(lend, "R%d := closure(Function #%d)", a, bc);
 			}
 			break;
+#if LUA_VERSION_NUM >= 505
+		case OP_GETVARG:
+			sprintf(line, "R%d R%d R%d", a, b, c);
+			StringBuffer_printf(lend, "R%d := R%d[R%d]", a, b, c);
+			break;
+		case OP_ERRNNIL:
+			sprintf(line, "R%d K%d", a, bc);
+			StringBuffer_printf(lend, "errnnil R%d K%d", a, bc);
+			break;
+#endif
 		default:
 			break;
 		}

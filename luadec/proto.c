@@ -20,7 +20,7 @@ Inst extractInstruction(Instruction i) {
 	Inst inst;
 	inst.op = GET_OPCODE(i);
 	inst.a = GETARG_A(i);
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	inst.b = checkopm(i, iABC) ? GETARG_B(i) : 0;
 	inst.c = checkopm(i, iABC) ? GETARG_C(i) : 0;
 	inst.bx = checkopm(i, iABx) ? GETARG_Bx(i) : 0;
@@ -46,17 +46,22 @@ Instruction assembleInstruction(Inst inst) {
 	Instruction i = 0;
 	switch (getOpMode(inst.op)) {
 	case iABC:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		i = CREATE_ABCk(inst.op, inst.a, inst.b, inst.c, inst.k);
 #else
 		i = CREATE_ABC(inst.op, inst.a, inst.b, inst.c);
 #endif
 		break;
+#if LUA_VERSION_NUM >= 505
+	case ivABC:
+		i = CREATE_vABCk(inst.op, inst.a, inst.b, inst.c, inst.k);
+		break;
+#endif
 	case iABx:
 		i = CREATE_ABx(inst.op, inst.a, inst.bx);
 		break;
 	case iAsBx:
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		i = CREATE_ABx(inst.op, inst.a, inst.sbx + OFFSET_sBx);
 #else
 		i = CREATE_ABx(inst.op, inst.a, inst.sbx);
@@ -67,7 +72,7 @@ Instruction assembleInstruction(Inst inst) {
 		i = CREATE_Ax(inst.op, inst.ax);
 		break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	case isJ:
 		i = CREATE_sJ(inst.op, inst.sj, inst.k);
 		break;
@@ -92,7 +97,7 @@ void InitOperators() {
 	operators[OP_ADD] = "+"; priorities[OP_ADD] = 4;
 	operators[OP_SUB] = "-"; priorities[OP_SUB] = 4;
 	operators[OP_CONCAT] = ".."; priorities[OP_CONCAT] = 5;
-#if LUA_VERSION_NUM == 503 || LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 503
 	operators[OP_BNOT] = "~"; priorities[OP_BNOT] = 2;
 	operators[OP_IDIV] = "//"; priorities[OP_IDIV] = 3;
 	operators[OP_SHL] = "<<"; priorities[OP_SHL] = 6;
@@ -101,7 +106,7 @@ void InitOperators() {
 	operators[OP_BXOR] = "~"; priorities[OP_BXOR] = 8;
 	operators[OP_BOR] = "|"; priorities[OP_BOR] = 9;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	operators[OP_ADDK] = "+"; priorities[OP_ADDK] = 4;
 	operators[OP_SUBK] = "-"; priorities[OP_SUBK] = 4;
 	operators[OP_MULK] = "*"; priorities[OP_MULK] = 3;
@@ -339,7 +344,7 @@ char* DecompileConstant(const Proto* f, int i) {
 		return strdup("Unknown_Type_Error");
 	}
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	switch (ttype(o)) {
 	case LUA_TNIL:
 		return strdup("nil");

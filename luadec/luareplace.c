@@ -186,7 +186,7 @@ int checkProto(const Proto* fleft, const Proto* fright, int c) {
 		strcat(warnmessage, "nups ");
 		stop = 1;
 	}
-	if (fleft->is_vararg != fright->is_vararg) {
+	if (IS_VARARG(fleft) != IS_VARARG(fright)) {
 		diff++;
 		strcat(warnmessage, "is_vararg ");
 	}

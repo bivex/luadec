@@ -135,7 +135,7 @@ int GetJmpAddr(Function* F, int addr) {
 		return real_end;
 	}
 	while (GET_OPCODE(F->f->code[real_end]) == OP_JMP) {
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		real_end = GETARG_sJ(F->f->code[real_end]) + real_end + 1;
 #else
 		real_end = GETARG_sBx(F->f->code[real_end]) + real_end + 1;
@@ -907,7 +907,7 @@ DecTable* NewTable(int r, int b, int c, int pc) {
 	InitList(&(self->array));
 	InitList(&(self->keyed));
 	self->reg = r;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	self->arraySize = c;
 	self->keyedSize = (b > 0) ? (1 << (b - 1)) : 0;
 #else
@@ -1288,12 +1288,12 @@ void DeclareLocals(Function* F) {
 				continue;
 			}
 			// handle TFOR loops
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			if (GET_OPCODE(instr) == OP_TFORPREP) {
 				Instruction call_inst = F->f->code[F->pc + 1 + GETARG_Bx(instr)];
 				int call_a = GETARG_A(call_inst);
 				int call_c = GETARG_C(call_inst);
-				if (r >= call_a && r <= call_a + 3 + call_c) {
+				if (r >= call_a && r <= call_a + TFOR_VAR_OFFSET + call_c) {
 					F->f->locvars[i].startpc = F->pc + 1;
 					continue;
 				}
@@ -1611,7 +1611,7 @@ int CompareProto(const Proto* fleft, const Proto* fright, StringBuffer* str) {
 		diff++;
 		StringBuffer_add(str, " different upvalues size;");
 	}
-	if (fleft->is_vararg != fright->is_vararg) {
+	if (IS_VARARG(fleft) != IS_VARARG(fright)) {
 		diff++;
 		StringBuffer_add(str, " different is_vararg;");
 	}
@@ -1677,10 +1677,10 @@ void listParams(const Proto* f, StringBuffer* str) {
 		for (i = 1; i < f->numparams; i++) {
 			StringBuffer_addPrintf(str, ", %s", getLocalName(f, i));
 		}
-		if (f->is_vararg) {
+		if (IS_VARARG(f)) {
 			StringBuffer_add(str, ", ...");
 		}
-	} else if (f->is_vararg) {
+	} else if (IS_VARARG(f)) {
 		StringBuffer_add(str, "...");
 	}
 }
@@ -1694,7 +1694,7 @@ void listUpvalues(const Proto* f, StringBuffer* str) {
 }
 
 int isTestOpCode(OpCode op) {
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 	return (op == OP_EQ || op == OP_LE || op == OP_LT || op == OP_EQK || op == OP_EQI || op == OP_LTI || op == OP_LEI || op == OP_GTI || op == OP_GEI || op == OP_TEST || op == OP_TESTSET);
 #else
 	return (op == OP_EQ || op == OP_LE || op == OP_LT || op == OP_TEST || op == OP_TESTSET);
@@ -1904,7 +1904,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			continue;
 		}
 
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		if (o == OP_JMP) {
 			dest = pc + 1 + GETARG_sJ(i);
 		} else if (o == OP_FORPREP) {
@@ -1936,7 +1936,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			AddToSet(F->do_opens, f->locvars[startreg].startpc);
 			AddToSet(F->do_closes, f->locvars[startreg].endpc);
 		}
-#elif LUA_VERSION_NUM == 504
+#elif LUA_VERSION_NUM >= 504
 		if (o == OP_CLOSE) {
 			int startreg = a;
 			if (f->locvars && startreg < f->sizelocvars) {
@@ -2083,7 +2083,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 						num_nil = MAX(num_nil,c);
 					}
 					break;
-#elif LUA_VERSION_NUM == 504
+#elif LUA_VERSION_NUM >= 504
 				case OP_SETTABUP:
 					if (!GETARG_k(i)) {
 						num_nil = c;
@@ -2121,6 +2121,9 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			fprintf(stddebug, "%-9s\t", luaP_opnames[o]);
 			switch (getOpMode(o)) {
 			case iABC:
+#if LUA_VERSION_NUM >= 505
+			case ivABC:
+#endif
 				fprintf(stddebug, "%d %d %d", a, b, c);
 				break;
 			case iABx:
@@ -2134,7 +2137,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				fprintf(stddebug, "%d", GETARG_Ax(i));
 				break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			case isJ:
 				fprintf(stddebug, "%d", GETARG_sJ(i));
 				break;
@@ -2263,7 +2266,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_EXTRAARG:
 			break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_LOADI:
 		{
 			StringBuffer_printf(str, "%d", sbc);
@@ -2350,7 +2353,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_VARARG:
 		{
 			int i;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			int numres = c;
 #else
 			int numres = b;
@@ -2374,7 +2377,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			}
 			break;
 		}
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_VARARGPREP:
 			break;
 #endif
@@ -2411,7 +2414,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			free(keystr);
 			break;
 		}
-#elif LUA_VERSION_NUM == 504
+#elif LUA_VERSION_NUM >= 504
 		case OP_GETTABUP:
 		{
 			const char *upvstr = UPVALUE(b);
@@ -2465,7 +2468,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			/*	A B C	R(A) := R(B)[RK(C)]				*/
 			const char *bstr;
 			char* cstr;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			cstr = luadec_strdup(GetR(F, c));
 #else
 			TRY(cstr = RegisterOrConstant(F, c));
@@ -2513,7 +2516,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			free(cstr);
 			break;
 		}
-#elif LUA_VERSION_NUM == 504
+#elif LUA_VERSION_NUM >= 504
 		case OP_SETTABUP:
 		{
 			const char *upvstr = UPVALUE(a);
@@ -2591,7 +2594,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			const char *astr;
 			char *bstr, *cstr;
 			int settable;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			bstr = luadec_strdup(GetR(F, b));
 			cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
 #else
@@ -2631,7 +2634,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			*/
 			const char *bstr;
 			char *cstr;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			cstr = GETARG_k(i) ? DecompileConstant(F->f, c) : luadec_strdup(GetR(F, c));
 #else
 			TRY(cstr = RegisterOrConstant(F, c));
@@ -2669,7 +2672,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			int prio = priorities[o];
 			int bprio = PRIORITY(b);
 			int cprio = PRIORITY(c);
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			bstr = luadec_strdup(GetR(F, b));
 			cstr = luadec_strdup(GetR(F, c));
 #else
@@ -2692,14 +2695,14 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
 			free(bstr);
 			free(cstr);
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBIN) {
 				ignoreNext = 1;
 			}
 #endif
 			break;
 		}
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_ADDK:
 		case OP_SUBK:
 		case OP_MULK:
@@ -2823,7 +2826,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_CONCAT:
 		{
 			int i;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			int from_r = a;
 			int to_r = a + b - 1;
 #else
@@ -2847,7 +2850,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_JMP:
 		{
 			// instead OP_CLOSE in 5.2 : if (A) close all upvalues >= R(A-1)
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			int dest = pc + GETARG_sJ(i) + 1;
 #else
 			int dest = sbc + pc + 1;
@@ -3046,7 +3049,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		case OP_LT:
 		case OP_LE:
 		{
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			int k = GETARG_k(i);
 			char *bstr = luadec_strdup(GetR(F, a));
 			char *cstr = luadec_strdup(GetR(F, b));
@@ -3065,7 +3068,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			goto LOGIC_NEXT_JMP;
 			break;
 		}
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_EQK:
 		{
 			int k = GETARG_k(i);
@@ -3137,7 +3140,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				TRY(ra = GetR(F, a));
 			}
 			TRY(rb = GetR(F, b));
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(rb), o, GETARG_k(i), pc + 1, -1));
 #else
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(rb), o, c, pc + 1, -1));
@@ -3155,7 +3158,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				PENDING(a) = 0;
 				F->testpending = a + 1;
 			}
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(ra), o, GETARG_k(i), pc + 1, -1));
 #else
 			AddToList(&(F->bools), (ListItem*)MakeBoolOp(luadec_strdup(ra), luadec_strdup(ra), o, c, pc + 1, -1));
@@ -3171,7 +3174,7 @@ LOGIC_NEXT_JMP:
 			F->pc = pc;
 			i = code[pc];
 			o = GET_OPCODE(i);
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			if (o == OP_JMP) {
 				dest = pc + GETARG_sJ(i) + 2;
 			} else {
@@ -3288,7 +3291,7 @@ LOGIC_NEXT_JMP:
 			}
 			break;
 		}
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_RETURN0:
 		{
 			if (pc != n - 1) {
@@ -3343,7 +3346,7 @@ LOGIC_NEXT_JMP:
 			AstStatement* currStmt = F->currStmt;
 
 			int i, r_begin, r_end;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			Instruction i_forprep = code[pc - bc];
 #else
 			Instruction i_forprep = code[pc + sbc];
@@ -3369,10 +3372,10 @@ LOGIC_NEXT_JMP:
 
 			int i, r_begin, r_end;
 			r_begin = a;
-#if LUA_VERSION_NUM == 504
-			r_end = a+3+c;
+#if LUA_VERSION_NUM >= 504
+			r_end = a + TFOR_VAR_OFFSET + c;
 #else
-			r_end = a+2+c;
+			r_end = a + 2 + c;
 #endif
 			for (i=r_begin; i<=r_end; i++)
 			{
@@ -3393,7 +3396,7 @@ LOGIC_NEXT_JMP:
 		case OP_TFORLOOP:
 			break;
 #endif
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 		case OP_TFORPREP:
 		{
 			int i;
@@ -3406,14 +3409,14 @@ LOGIC_NEXT_JMP:
 			int tf_c = GETARG_C(idest);
 
 			generator = luadec_strdup(GetR(F, tf_a));
-			for (i = tf_a; i <= tf_a + 3 + tf_c; i++) {
+			for (i = tf_a; i <= tf_a + TFOR_VAR_OFFSET + tf_c; i++) {
 				CALL(i) = 0;
 				PENDING(i) = 0;
 				RemoveFromSet(F->tpend, i);
 			}
 
 			for (i = 1; i <= tf_c; i++) {
-				int var_reg = tf_a + 3 + i;
+				int var_reg = tf_a + TFOR_VAR_OFFSET + i;
 				const char* name = NULL;
 				int locVarIndex = getLocVarIndex(f, var_reg + 1, pc + 2);
 				if (locVarIndex >= 0 && locVarIndex < f->sizelocvars) {
@@ -3437,10 +3440,9 @@ LOGIC_NEXT_JMP:
 			StringBuffer_addPrintf(str, " in %s", generator);
 			free(generator);
 
-			F->Rinternal[tf_a] = 1;
-			F->Rinternal[tf_a + 1] = 1;
-			F->Rinternal[tf_a + 2] = 1;
-			F->Rinternal[tf_a + 3] = 1;
+			for (i = 0; i < TFOR_INTERNAL_NUM; i++) {
+				F->Rinternal[tf_a + i] = 1;
+			}
 
 			if (next_child && next_child->type == TFORLOOP_STMT) {
 				tforstmt = next_child->block;
@@ -3531,7 +3533,7 @@ LOGIC_NEXT_JMP:
 			}
 		case OP_SETLIST:
 		{
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			if (GETARG_k(i)) {
 				Instruction i_next_arg = code[pc + 1];
 				ignoreNext = 1;
@@ -3578,7 +3580,7 @@ LOGIC_NEXT_JMP:
 			int i;
 			int uvn;
 			int cfnum = functionnum;
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 			Proto* cf = f->p[bc];
 #else
 			Proto* cf = f->p[c];
@@ -3656,7 +3658,7 @@ LOGIC_NEXT_JMP:
 			if (func_checking) {
 				char* code = NULL;
 				char* newfuncnumstr = (char*)calloc(strlen(funcnumstr) + 12, sizeof(char));
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 				functionnum = bc;
 				sprintf(newfuncnumstr, "%s_%d", funcnumstr, bc);
 #else
@@ -3666,7 +3668,7 @@ LOGIC_NEXT_JMP:
 				code = PrintFunctionOnlyParamsAndUpvalues(cf, F->indent, newfuncnumstr);
 				StringBuffer_setBuffer(str, code);
 			} else if (!process_sub) {
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 				StringBuffer_printf(str, "DecompiledFunction_%s_%d", funcnumstr, bc);
 #else
 				StringBuffer_printf(str, "DecompiledFunction_%s_%d", funcnumstr, c);
@@ -3674,7 +3676,7 @@ LOGIC_NEXT_JMP:
 			} else {
 				char* code = NULL;
 				char* newfuncnumstr = (char*)calloc(strlen(funcnumstr) + 12, sizeof(char));
-#if LUA_VERSION_NUM == 504
+#if LUA_VERSION_NUM >= 504
 				functionnum = bc;
 				sprintf(newfuncnumstr, "%s_%d", funcnumstr, bc);
 #else
@@ -3691,6 +3693,18 @@ LOGIC_NEXT_JMP:
 #endif
 			break;
 		}
+#if LUA_VERSION_NUM >= 505
+		case OP_GETVARG:
+		{
+			const char* bstr = GetR(F, b);
+			const char* cstr = GetR(F, c);
+			StringBuffer_printf(str, "%s[%s]", bstr, cstr);
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			break;
+		}
+		case OP_ERRNNIL:
+			break;
+#endif
 		default:
 			StringBuffer_printf(str, "-- unhandled opcode? : 0x%02X", o);
 			TRY(AddStatement(F, str));
