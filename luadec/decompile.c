@@ -733,7 +733,7 @@ void AssignGlobalOrUpvalue(Function* F, const char* dest, const char* src) {
 }
 
 void AssignReg(Function* F, int reg, const char* src, int prio, int mayTest) {
-	if (reg < 0 || reg >= MAXARG_A) {
+	if (reg < 0 || reg > MAXARG_A) {
 		sprintf(errortmp, "Invalid register: R%d in 'AssignReg'", reg);
 		SET_ERROR(F, errortmp);
 		return;
@@ -972,7 +972,7 @@ void SetList(Function* F, int a, int b, int c) {
 	if (b == 0) {
 		const char* rstr;
 		i = 1;
-		while (a + i < MAXARG_A) {
+		while (a + i <= MAXARG_A) {
 			rstr = GetR(F, a + i);
 			if (error || rstr == NULL)
 				return;
@@ -983,7 +983,7 @@ void SetList(Function* F, int a, int b, int c) {
 		};
 	} //should be {...} or func(func()) ,when b == 0, that will use all avaliable reg from R(a)
 
-	for (i = 1; i <= b && a + i < MAXARG_A; i++) {
+	for (i = 1; i <= b && a + i <= MAXARG_A; i++) {
 		const char* rstr = GetR(F, a + i);
 		if (error || rstr == NULL)
 			return;
@@ -992,7 +992,7 @@ void SetList(Function* F, int a, int b, int c) {
 }
 
 void UnsetPending(Function* F, int r) {
-	if (r < 0 || r >= MAXARG_A) {
+	if (r < 0 || r > MAXARG_A) {
 		return;
 	}
 	if (!IS_VARIABLE(r)) {
@@ -1107,7 +1107,7 @@ void DeleteFunction(Function* self) {
 	/*
 	* clean up registers
 	*/
-	for (i = 0; i < MAXARG_A; i++) {
+	for (i = 0; i <= MAXARG_A; i++) {
 		if (self->R[i]) {
 			free(self->R[i]);
 		}
@@ -1130,7 +1130,7 @@ void DeleteFunction(Function* self) {
 void DeclareVariable(Function* F, const char* name, int reg);
 
 const char* GetR(Function* F, int r) {
-	if (r < 0 || r >= MAXARG_A) {
+	if (r < 0 || r > MAXARG_A) {
 		sprintf(errortmp, "Invalid register: R%d in 'GetR'", r);
 		SET_ERROR(F, errortmp);
 		return NULL;
@@ -1151,7 +1151,7 @@ const char* GetR(Function* F, int r) {
 }
 
 void DeclareVariable(Function* F, const char* name, int reg) {
-	if (reg < 0 || reg >= MAXARG_A) {
+	if (reg < 0 || reg > MAXARG_A) {
 		return;
 	}
 	IS_VARIABLE(reg) = 1;
@@ -1235,7 +1235,7 @@ void ReleaseLocals(Function* F) {
 			}
 			r = F->freeLocal;
 			//fprintf(stderr,"%d %d %d\n",i,r, F->pc);
-			if (!IS_VARIABLE(r)) {
+			if (r > MAXARG_A || !IS_VARIABLE(r)) {
 				continue;
 			}
 			IS_VARIABLE(r) = 0;
@@ -1286,12 +1286,12 @@ void DeclareLocals(Function* F) {
 					declared_vars[num_declared].name = name;
 					num_declared++;
 				}
-				if (F->Rinternal[r]) {
+				if (r <= MAXARG_A && F->Rinternal[r]) {
 					F->Rinternal[r] = 0;
 					internalLocals++;
 					continue;
 				}
-				if (PENDING(r)) {
+				if (r <= MAXARG_A && PENDING(r)) {
 					if (locals > 0) {
 						StringBuffer_add(str, ", ");
 						StringBuffer_add(rhs, ", ");
@@ -1302,8 +1302,10 @@ void DeclareLocals(Function* F) {
 					StringBuffer_add(str, ", ");
 					StringBuffer_add(str, name);
 				}
-				CALL(r) = 0;
-				IS_VARIABLE(r) = 1;
+				if (r <= MAXARG_A) {
+					CALL(r) = 0;
+					IS_VARIABLE(r) = 1;
+				}
 				locals++;
 			}
 		}
@@ -1349,14 +1351,14 @@ void DeclareLocals(Function* F) {
 				declared_vars[num_declared].name = luadec_strdup(LOCAL(i));
 				num_declared++;
 			}
-			if ((F->Rinternal[r])) {
+			if (r <= MAXARG_A && (F->Rinternal[r])) {
 				PENDING(r) = 0;
 				IS_VARIABLE(r) = 1;
 				F->Rinternal[r] = 0;
 				internalLocals++;
 				continue;
 			}
-			if (PENDING(r)) {
+			if (r <= MAXARG_A && PENDING(r)) {
 				if (locals > 0) {
 					StringBuffer_add(str, ", ");
 					StringBuffer_add(rhs, ", ");
@@ -1370,8 +1372,10 @@ void DeclareLocals(Function* F) {
 				}
 				StringBuffer_add(str, LOCAL(i));
 			}
-			CALL(r) = 0;
-			IS_VARIABLE(r) = 1;
+			if (r <= MAXARG_A) {
+				CALL(r) = 0;
+				IS_VARIABLE(r) = 1;
+			}
 			locals++;
 		}
 	}
@@ -1867,7 +1871,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 
 	int currLocVar = 0;
 	int RvarTop = 0;
-	int Rvar[MAXARG_A];
+	int Rvar[MAXARG_A + 1];
 
 	LoopItem* next_child;
 
@@ -3271,7 +3275,7 @@ LOGIC_NEXT_JMP:
 
 			if (b == 0) {
 				limit = a + 1;
-				while (PENDING(limit) || IS_VARIABLE(limit)) limit++;
+				while (limit <= MAXARG_A && (PENDING(limit) || IS_VARIABLE(limit))) limit++;
 			} else {
 				limit = a + b;
 			}
@@ -3358,15 +3362,15 @@ LOGIC_NEXT_JMP:
 			* Return call. The RETURN opcode works like this: return
 			* R(A),...,R(A+B-2)
 			*/
-			AstStatement* returnstmt = MakeStatement(RETURN_STMT, NULL);
 			int i, limit;
 
 			/* skip the last RETURN */
 			if (pc == n - 1)
 				break;
+			AstStatement* returnstmt = MakeStatement(RETURN_STMT, NULL);
 			if (b == 0) {
 				limit = a;
-				while (PENDING(limit) || IS_VARIABLE(limit)) limit++;
+				while (limit <= MAXARG_A && (PENDING(limit) || IS_VARIABLE(limit))) limit++;
 			}
 			else
 				limit = a + b - 1;

@@ -41,20 +41,20 @@ struct Function_ {
 	/* program counter during symbolic interpretation */
 	int pc;
 	/* These act as the VM registers */
-	char* R[MAXARG_A];
+	char* R[MAXARG_A + 1];
 	/* These store the priority for the operation that stored the value in each
 	register */
-	int Rprio[MAXARG_A];
+	int Rprio[MAXARG_A + 1];
 	/* Boolean values indicating if register holds a table */
-	int Rtabl[MAXARG_A];
+	int Rtabl[MAXARG_A + 1];
 	/* Registers standing for local variables. */
-	int Rvar[MAXARG_A];
+	int Rvar[MAXARG_A + 1];
 	/* Pending code to be flushed */
-	int Rpend[MAXARG_A];
+	int Rpend[MAXARG_A + 1];
 	/* Registers for internal use */
-	int Rinternal[MAXARG_A];
+	int Rinternal[MAXARG_A + 1];
 	/* Registers used in call returns */
-	int Rcall[MAXARG_A];
+	int Rcall[MAXARG_A + 1];
 	/* 'a' of last CALL instruction -- used with 0-param CALLs */
 	int lastCall;
 	/* This is a list for creation of tables */
