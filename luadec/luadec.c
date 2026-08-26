@@ -52,7 +52,7 @@ int string_encoding=GBK;
 int guess_locals=1;
 lua_State* glstate;
 Proto* glproto;
-static int lds2=0;
+static int dump_locvars_flag=0;
 char* LDS2;
 static char Output[]={ OUTPUT };		/* default output file name */
 static const char* output=Output;		/* output file name */
@@ -281,7 +281,7 @@ static int doargs(int argc, char* argv[]) {
 		else if (IS("-p"))			/* parse only */
 			dumping=0;
 		else if (IS("-pg"))			/* parse only */
-			lds2=1;
+			dump_locvars_flag=1;
 		else if (IS("-dg"))			/* parse only */
 			guess_locals=0;
 		else if (IS("-s"))			/* strip debug information */
@@ -467,8 +467,7 @@ int main(int argc, char* argv[]) {
 	for (i=1; i<gargc; i++) {
 		printf("%s ",gargv[i]);
 	}
-	printf("\n\n");
-	if (lds2) {
+	if (dump_locvars_flag) {
 		int i,i2;
 		for (i=-1; i<f->sizep; i++) {
 			Proto * x = f;

@@ -192,6 +192,9 @@ int isUTF8(const unsigned char* buff, int size) {
 char* DecompileString(const TValue* o) {
 	int i, utf8length;
 	TString* ts = rawtsvalue(o);
+	if (!ts) {
+		return strdup("\"\"");
+	}
 	const unsigned char* s = (const unsigned char*)getstr(ts);
 	int len = LUA_STRLEN(ts);
 	char* ret = (char*)calloc(len * 4 + 3, sizeof(char));

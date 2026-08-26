@@ -737,7 +737,7 @@ void luadec_disassemble(Proto* fwork, int dflag, const char* name) {
 		default:
 			break;
 		}
-		printf("%5d [-]: %-9s %-13s; %s\n",pc,luaP_opnames[o],line,StringBuffer_getRef(lend));
+		printf("%5d [-]: %-9s %-13s; %s\n",pc, (o < NUM_OPCODES ? luaP_opnames[o] : "UNKNOWN"), line, StringBuffer_getRef(lend));
 		if (tmpconstant1) {
 			free(tmpconstant1);
 			tmpconstant1 = NULL;

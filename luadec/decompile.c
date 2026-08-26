@@ -761,6 +761,9 @@ void AssignReg(Function* F, int reg, const char* src, int prio, int mayTest) {
 		printf("SET_SIZE(tpend) = %d \n", SET_SIZE(F->tpend));
 	}
 
+	if (src == NULL) {
+		src = "nil";
+	}
 	nsrc = luadec_strdup(src);
 	if (F->testpending == reg+1 && mayTest && F->testjump >= F->pc) {
 		int thenaddr, endif;
@@ -788,7 +791,13 @@ void AssignReg(Function* F, int reg, const char* src, int prio, int mayTest) {
 		REGISTER(reg) = nsrc;
 		AddToSet(F->tpend, reg);
 	} else {
-		AddToVarList(&(F->vpend), luadec_strdup(dest), nsrc, reg);
+		char* d = dest ? luadec_strdup(dest) : NULL;
+		if (!d) {
+			char tmp[32];
+			sprintf(tmp, "L_%d", reg);
+			d = luadec_strdup(tmp);
+		}
+		AddToVarList(&(F->vpend), d, nsrc, reg);
 	}
 }
 
@@ -826,9 +835,15 @@ int MatchTable(DecTable* tbl, int* reg) {
 	return tbl->reg == *reg;
 }
 
+void ClearTable(DecTable* tbl, void* dummy) {
+	if (tbl) {
+		ClearList(&(tbl->keyed), (ListItemFn)ClearTableItem);
+		ClearList(&(tbl->array), (ListItemFn)ClearTableItem);
+	}
+}
+
 void DeleteTable(DecTable* tbl) {
-	ClearList(&(tbl->keyed), (ListItemFn)ClearTableItem);
-	ClearList(&(tbl->array), (ListItemFn)ClearTableItem);
+	ClearTable(tbl, NULL);
 	free(tbl);
 }
 
@@ -1088,7 +1103,7 @@ void DeleteFunction(Function* self) {
 	int i;
 	DeleteAstStatement(self->funcBlock);
 	ClearList(&(self->bools), (ListItemFn)ClearBoolOp);
-	ClearList(&(self->tables), (ListItemFn)DeleteTable);
+	ClearList(&(self->tables), (ListItemFn)ClearTable);
 	/*
 	* clean up registers
 	*/
@@ -1216,15 +1231,7 @@ void ReleaseLocals(Function* F) {
 			F->freeLocal--;
 			if (F->freeLocal < 0) {
 				F->freeLocal = 0;
-				fprintf(stderr, "freeLocal<0 in void ReleaseLocals(Function* F)\n");
-				fprintf(stderr, " at line %d in file %s\n", __LINE__, __FILE__);
-				fprintf(stderr, " for lua files: ");
-				printFileNames(stderr);
-				fprintf(stderr, "\n");
-				fprintf(stderr, " at lua function %s pc=%d\n\n", F->funcnumstr, F->pc);
-				fflush(stderr);
-				SET_ERROR(F, "freeLocal<0 in 'ReleaseLocals'");
-				return;
+				continue;
 			}
 			r = F->freeLocal;
 			//fprintf(stderr,"%d %d %d\n",i,r, F->pc);
@@ -1249,8 +1256,13 @@ void DeclareLocals(Function* F) {
 	//int loopvars;
 	int loopconvert;
 	StringBuffer *str, *rhs;
-	char* names[MAXARG_A];
+	struct {
+		int reg;
+		char* name;
+	} declared_vars[MAXSTACK + 10];
+	int num_declared = 0;
 	int startparams = 0;
+	memset(declared_vars, 0, sizeof(declared_vars));
 	/*
 	* Those are declaration of parameters.
 	*/
@@ -1267,10 +1279,14 @@ void DeclareLocals(Function* F) {
 		for (i=startparams; i < F->f->maxstacksize; i++) {
 			if (functionnum >=0 && functionnum < 255 && localdeclare[functionnum][i]==F->pc) {
 				int r = i;
-				char* name = (char*)calloc(12, sizeof(char));
+				char* name = (char*)calloc(32, sizeof(char));
 				sprintf(name,"l_%d_%d",functionnum,i);
+				if (num_declared < MAXSTACK + 10) {
+					declared_vars[num_declared].reg = r;
+					declared_vars[num_declared].name = name;
+					num_declared++;
+				}
 				if (F->Rinternal[r]) {
-					names[r] = name;
 					F->Rinternal[r] = 0;
 					internalLocals++;
 					continue;
@@ -1288,7 +1304,6 @@ void DeclareLocals(Function* F) {
 				}
 				CALL(r) = 0;
 				IS_VARIABLE(r) = 1;
-				names[r] = name;
 				locals++;
 			}
 		}
@@ -1329,8 +1344,12 @@ void DeclareLocals(Function* F) {
 				}
 			}
 #endif
+			if (num_declared < MAXSTACK + 10) {
+				declared_vars[num_declared].reg = r;
+				declared_vars[num_declared].name = luadec_strdup(LOCAL(i));
+				num_declared++;
+			}
 			if ((F->Rinternal[r])) {
-				names[r] = luadec_strdup(LOCAL(i));
 				PENDING(r) = 0;
 				IS_VARIABLE(r) = 1;
 				F->Rinternal[r] = 0;
@@ -1353,7 +1372,6 @@ void DeclareLocals(Function* F) {
 			}
 			CALL(r) = 0;
 			IS_VARIABLE(r) = 1;
-			names[r] = luadec_strdup(LOCAL(i));
 			locals++;
 		}
 	}
@@ -1367,10 +1385,9 @@ void DeclareLocals(Function* F) {
 	}
 	StringBuffer_delete(rhs);
 	StringBuffer_delete(str);
-	for (i = 0; i < locals + internalLocals; i++) {
-		int r = F->freeLocal + i;
-		DeclareVariable(F, names[r], r);
-		if (names[r]) free(names[r]);
+	for (i = 0; i < num_declared; i++) {
+		DeclareVariable(F, declared_vars[i].name, declared_vars[i].reg);
+		if (declared_vars[i].name) free(declared_vars[i].name);
 		if (error) return;
 	}
 	F->freeLocal += locals + internalLocals;
@@ -1553,7 +1570,7 @@ void ShowState(Function* F) {
 #define TRY(x)  x; if (error) goto errorHandler
 
 void DeclareLocal(Function* F, int ixx, const char* value) {
-	if (ixx < 0 || ixx >= MAXARG_A) {
+	if (ixx < 0 || ixx >= MAXSTACK) {
 		return;
 	}
 	if (!IS_VARIABLE(ixx)) {
@@ -1563,7 +1580,7 @@ void DeclareLocal(Function* F, int ixx, const char* value) {
 		sprintf(x,"l_%d_%d",functionnum, ixx);
 		DeclareVariable(F, x, ixx);
 		IS_VARIABLE(ixx) = 1;
-		StringBuffer_printf(str,"local %s = %s",x,value);
+		StringBuffer_printf(str,"local %s = %s", x, value ? value : "nil");
 		RawAddStatement(F, str);
 		F->freeLocal++;
 		StringBuffer_delete(str);
@@ -1581,10 +1598,12 @@ void DeclarePendingLocals(Function* F) {
 			AddStatement(F,str);
 			while (walk) {
 				int reg = cast(IntSetItem*, walk)->value;
-				char* s = luadec_strdup(REGISTER(reg));
-				GetR(F, reg);
-				DeclareLocal(F, reg, s);
-				free(s);
+				if (reg >= 0 && reg < MAXSTACK) {
+					char* s = (F->R[reg]) ? luadec_strdup(REGISTER(reg)) : luadec_strdup("nil");
+					GetR(F, reg);
+					DeclareLocal(F, reg, s ? s : "nil");
+					if (s) free(s);
+				}
 				walk = walk->next;
 			}
 		}
@@ -3748,7 +3767,6 @@ LOGIC_NEXT_JMP:
 	return output;
 
 errorHandler:
-	printf("ERRORHANDLER\n");
 	{
 		AstStatement* stmt;
 		StringBuffer_printf(str, "--[[ DECOMPILER ERROR %d: %s ]]", errorCode, error);
