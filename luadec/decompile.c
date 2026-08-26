@@ -78,6 +78,43 @@ void FixLocalNames(Proto* f, const char* funcnumstr) {
 	free(tmpname);
 }
 
+void FixUpvalNames(Proto* f, const char* funcnumstr) {
+	int i;
+	int uvn = NUPS(f);
+	char* tmpname = (char*)calloc(strlen(funcnumstr) + 32, sizeof(char));
+#if LUA_VERSION_NUM == 501
+	if (!f->upvalues) {
+		f->sizeupvalues = uvn;
+		f->upvalues = luaM_newvector(glstate, uvn, UPVAL_TYPE);
+		for (i = 0; i < uvn; i++) {
+			sprintf(tmpname, "upval_%s_%d", funcnumstr, i);
+			UPVAL_NAME(f, i) = luaS_new(glstate, tmpname);
+		}
+	}
+#else
+	if (!f->upvalues && uvn > 0) {
+		f->sizeupvalues = uvn;
+		f->upvalues = luaM_newvector(glstate, uvn, Upvaldesc);
+		for (i = 0; i < uvn; i++) {
+			UPVAL_NAME(f, i) = NULL;
+		}
+	}
+	for (i = 0; i < uvn; i++) {
+		TString* name = UPVAL_NAME(f, i);
+		if (name == NULL || LUA_STRLEN(name) == 0 ||
+			strlen(getstr(name)) == 0 || !isIdentifier(getstr(name))) {
+			if (IsMain(f) && i == 0) {
+				UPVAL_NAME(f, i) = luaS_new(glstate, "_ENV");
+			} else {
+				sprintf(tmpname, "upval_%s_%d", funcnumstr, i);
+				UPVAL_NAME(f, i) = luaS_new(glstate, tmpname);
+			}
+		}
+	}
+#endif
+	free(tmpname);
+}
+
 // i : index of Proto.locvars, not reg number
 const char* getLocalName(const Proto* f, int i) {
 	if (f->locvars && i < f->sizelocvars && f->locvars[i].varname) {
@@ -766,25 +803,31 @@ void AssignReg(Function* F, int reg, const char* src, int prio, int mayTest) {
 	}
 	nsrc = luadec_strdup(src);
 	if (F->testpending == reg+1 && mayTest && F->testjump >= F->pc) {
-		int thenaddr, endif;
-		char* test = OutputBoolean(F, &thenaddr, &endif, 1);
-		if (error) {
-			free(nsrc);
+		if (F->pc + 2 < F->testjump) {
+			// Intermediate calculation in the right branch: keep testpending and testjump active
+		} else {
+			int thenaddr, endif;
+			char* test = OutputBoolean(F, &thenaddr, &endif, 1);
+			if (error) {
+				free(nsrc);
+				if (test) free(test);
+				return;
+			}
+			if (endif >= F->pc) {
+				StringBuffer* str = StringBuffer_new(NULL);
+				StringBuffer_printf(str, "%s or %s", test, src);
+				free(nsrc);
+				nsrc = StringBuffer_getBuffer(str);
+				StringBuffer_delete(str);
+				F->testpending = 0;
+				F->Rprio[reg] = 8;
+			}
 			if (test) free(test);
-			return;
+			F->testjump = 0;
 		}
-		if (endif >= F->pc) {
-			StringBuffer* str = StringBuffer_new(NULL);
-			StringBuffer_printf(str, "%s or %s", test, src);
-			free(nsrc);
-			nsrc = StringBuffer_getBuffer(str);
-			StringBuffer_delete(str);
-			F->testpending = 0;
-			F->Rprio[reg] = 8;
-		}
-		if (test) free(test);
+	} else if (F->testjump <= F->pc) {
+		F->testjump = 0;
 	}
-	F->testjump = 0;
 
 	if (!IS_VARIABLE(reg)) {
 		if (REGISTER(reg)) free(REGISTER(reg));
@@ -1882,6 +1925,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 	error = NULL;
 
 	FixLocalNames(f, funcnumstr);
+	FixUpvalNames(f, funcnumstr);
 
 	/*
 	* Function parameters are stored in registers from 0 on.
@@ -2489,7 +2533,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				StringBuffer_printf(str, "(%s)", bstr);
 			}
 			MakeIndex(F, str, cstr, DOT);
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
 			free(cstr);
 			break;
 		}
@@ -2505,7 +2549,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				StringBuffer_printf(str, "(%s)", bstr);
 			}
 			MakeIndex(F, str, cstr, SQUARE_BRACKET);
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
 			break;
 		}
 #endif
@@ -2526,7 +2570,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				StringBuffer_printf(str, "(%s)", bstr);
 			}
 			MakeIndex(F, str, cstr, DOT);
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
 			free(cstr);
 			break;
 		}
@@ -2738,7 +2782,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			} else {
 				StringBuffer_addPrintf(str, "(%s)", cstr);
 			}
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 1));
 			free(bstr);
 			free(cstr);
 #if LUA_VERSION_NUM >= 504
@@ -2771,7 +2815,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				StringBuffer_addPrintf(str, "(%s)", bstr);
 			}
 			StringBuffer_addPrintf(str, " %s %s", oper, cstr);
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 1));
 			free(bstr);
 			free(cstr);
 			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINK) {
@@ -2795,7 +2839,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			} else {
 				StringBuffer_addPrintf(str, " + %d", sc);
 			}
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 1));
 			free(bstr);
 			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINI) {
 				ignoreNext = 1;
@@ -2818,7 +2862,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			} else {
 				StringBuffer_addPrintf(str, " >> %d", sc);
 			}
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 1));
 			free(bstr);
 			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINI) {
 				ignoreNext = 1;
@@ -2837,7 +2881,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			} else {
 				StringBuffer_addPrintf(str, "(%s)", bstr);
 			}
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), prio, 1));
 			free(bstr);
 			if (pc + 1 < f->sizecode && GET_OPCODE(f->code[pc + 1]) == OP_MMBINI) {
 				ignoreNext = 1;
@@ -2866,7 +2910,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			} else {
 				StringBuffer_addPrintf(str, "(%s)", bstr);
 			}
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
 			break;
 		}
 		case OP_CONCAT:
@@ -2890,7 +2934,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				if (i < to_r)
 					StringBuffer_add(str, " .. ");
 			}
-			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 0));
+			TRY(AssignReg(F, a, StringBuffer_getRef(str), 0, 1));
 			break;
 		}
 		case OP_JMP:
@@ -3849,8 +3893,12 @@ char* ProcessSubFunction(Proto* cf, int func_checking, char* funcnumstr) {
 			TString* name = UPVAL_NAME(cf, i);
 			if (name == NULL || LUA_STRLEN(name) == 0 ||
 				strlen(getstr(name)) == 0 || !isIdentifier(getstr(name))) {
-				// TODO 5.2 Maybe we should trace up to get _ENV ?
-				// Also wen can get the location where upval defined
+#if LUA_VERSION_NUM >= 502
+				if (IsMain(cf) && i == 0) {
+					UPVAL_NAME(cf, i) = luaS_new(glstate, "_ENV");
+					continue;
+				}
+#endif
 				sprintf(tmpname, "upval_%s_%d", funcnumstr, i);
 				UPVAL_NAME(cf, i) = luaS_new(glstate, tmpname);
 			}
