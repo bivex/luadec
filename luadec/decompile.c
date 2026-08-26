@@ -80,7 +80,7 @@ void FixLocalNames(Proto* f, const char* funcnumstr) {
 
 // i : index of Proto.locvars, not reg number
 const char* getLocalName(const Proto* f, int i) {
-	if (f->locvars && i < f->sizelocvars) {
+	if (f->locvars && i < f->sizelocvars && f->locvars[i].varname) {
 		// no need to test after FixLocalNames
 		return getstr(f->locvars[i].varname);
 	} else {
@@ -91,7 +91,7 @@ const char* getLocalName(const Proto* f, int i) {
 
 // i : index of Proto.upvalues
 const char* getUpvalName(const Proto* f, int i) {
-	if (f->upvalues && i < f->sizeupvalues) {
+	if (f->upvalues && i < f->sizeupvalues && UPVAL_NAME(f, i)) {
 		// no need to test after FixUpvalNames
 		return getstr(UPVAL_NAME(f, i));
 	} else {
