@@ -496,10 +496,8 @@ LogicExp* MakeBoolean(Function* F, int* thenaddr, int* endif) {
 			if (currExp->parent == NULL || dest < currExp->parent->dest) {
 				/* creating a new level */
 				LogicExp* subexp = MakeExpChain(dest);
-				LogicExp* savecurr;
 				TieAsNext(currExp, exp);
 				currExp = exp;
-				savecurr = currExp;
 				if (currExp->parent == NULL) {
 					TieAsSubExp(subexp, firstExp);
 					firstExp = subexp;
@@ -523,11 +521,9 @@ LogicExp* MakeBoolean(Function* F, int* thenaddr, int* endif) {
 				}
 				TieAsSubExp(chain, currExp);
 
-				//currExp->parent = prevParent; // WHY use this line cause a memory leak, but output is better
 				if (prevParent == NULL) {
 					firstExp = chain;
 				} else {
-					// todo
 					TieAsNext(prevParent, chain);
 				}
 			} else {
@@ -629,9 +625,7 @@ void RawAddAstStatement(Function* F, AstStatement* stmt) {
 	if (F->released_local) {
 		AstStatement* block = F->currStmt;
 		AstStatement* curr = cast(AstStatement*, block->sub->head);
-		AstStatement* tail = cast(AstStatement*, block->sub->tail);
 		AstStatement* prev = NULL;
-		int count = 0;
 		int lpc = F->released_local;
 		F->released_local = 0;
 		while (curr) {
@@ -640,12 +634,8 @@ void RawAddAstStatement(Function* F, AstStatement* stmt) {
 			}
 			prev = curr;
 			curr = cast(AstStatement*, prev->super.next);
-			count++;
 		}
-		if (curr) {
-			//TODO check list.size
-			int blockSize = block->sub->size;
-
+		if (curr && block->sub && block->sub->size > 0) {
 			AstStatement* dostmt = MakeBlockStatement(DO_STMT, NULL);
 			dostmt->line = lpc;
 
@@ -703,13 +693,14 @@ void FlushBoolean(Function* F) {
 		test = OutputBoolean(F, &thenaddr, &endif, 0);
 		if (error) goto FlushBoolean_CLEAR_HANDLER1;
 
-		//TODO find another method to determine while loop body to output while do
-		//search parent
 		walk = F->loop_ptr;
-		if (walk->type == WHILE_STMT && walk->out == endif -1 && walk->body == -1) {
-			int whileStart = walk->start;
-			walk->body = thenaddr;
-			whilestmt = walk->block;
+		while (walk && walk->type != FUNCTION_STMT) {
+			if (walk->type == WHILE_STMT && walk->out == endif - 1 && walk->body == -1) {
+				walk->body = thenaddr;
+				whilestmt = walk->block;
+				break;
+			}
+			walk = walk->parent;
 		}
 
 		if (whilestmt) {
@@ -1021,16 +1012,16 @@ void SetList(Function* F, int a, int b, int c) {
 				return;
 			if (strcmp(rstr,".end") == 0)
 				break;
-			AddToTable(F, tbl, rstr, NULL); // Lua5.1 specific TODO: it's not really this :(
+			AddToTable(F, tbl, rstr, NULL);
 			i++;
 		};
-	} //should be {...} or func(func()) ,when b == 0, that will use all avaliable reg from R(a)
+	}
 
 	for (i = 1; i <= b && a + i <= MAXARG_A; i++) {
 		const char* rstr = GetR(F, a + i);
 		if (error || rstr == NULL)
 			return;
-		AddToTable(F, tbl, rstr, NULL); // Lua5.1 specific TODO: it's not really this :(
+		AddToTable(F, tbl, rstr, NULL);
 	}
 }
 
@@ -1186,10 +1177,10 @@ const char* GetR(Function* F, int r) {
 	if (error) return NULL;
 
 	if (F->R[r] == NULL) {
-		char sb[] = { "R%rrrrr%_PC%pcccccccc%" };
-		sprintf(sb, "R%d_PC%d", r, F->pc);
+		char sb[32];
+		snprintf(sb, sizeof(sb), "R%d_PC%d", r, F->pc);
 		DeclareVariable(F, sb, r);
-	}//dirty hack , some numeric FOR loops may cause error
+	}
 	return F->R[r];
 }
 
@@ -1295,9 +1286,6 @@ void DeclareLocals(Function* F) {
 	int i;
 	int locals;
 	int internalLocals = 0;
-	//int loopstart;
-	//int loopvars;
-	int loopconvert;
 	StringBuffer *str, *rhs;
 	struct {
 		int reg;
@@ -1353,7 +1341,6 @@ void DeclareLocals(Function* F) {
 			}
 		}
 	}
-	loopconvert = 0;
 	for (i = startparams; i < F->f->sizelocvars; i++) {
 		if (F->f->locvars[i].startpc == F->pc || F->f->locvars[i].startpc == F->pc + 1) {
 			const char* varname = getLocalName(F->f, i);
@@ -1551,6 +1538,11 @@ IndexType MakeIndex(Function* F, StringBuffer* str, char* rstr, IndexType type) 
 			case TABLE:
 				StringBuffer_addPrintf(str, "%s", (rstr + 1));
 				ret = TABLE;
+				break;
+			case SQUARE_BRACKET:
+			default:
+				StringBuffer_addPrintf(str, "[\"%s\"]", (rstr + 1));
+				ret = SQUARE_BRACKET;
 				break;
 			}
 			rstr[len - 1] = '\"';
@@ -1818,8 +1810,8 @@ void PrintLoopTree(LoopItem* li, int indent) {
 	for (i = 0; i < indent; i++) {
 		fprintf(stderr, "  ");
 	}
-	fprintf(stderr, "%s=0x%x prep=%d start=%d body=%d end=%d out=%d block=0x%x \n"
-		,stmttype[li->type], li, li->prep, li->start, li->body, li->end, li->out, li->block);
+	fprintf(stderr, "%s=%p prep=%d start=%d body=%d end=%d out=%d block=%p \n"
+		,stmttype[li->type], (void*)li, li->prep, li->start, li->body, li->end, li->out, (void*)li->block);
 	while(child) {
 		PrintLoopTree(child, indent+1);
 		child = child->next;
@@ -1899,16 +1891,14 @@ int testLocVarIndex(const Proto* f, int reg, int pc, int Rvar[], int RvarTop, in
 //#define GetLocVarIndex(reg, pc) ((reg < RvarTop) ? Rvar[reg] : -1)
 
 char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
-	int i = 0;
-
-	int ignoreNext = 0;
-
+	int i;
+	int pc;
+	int n = f->sizecode;
+	Instruction* code = f->code;
 	Function* F;
 	StringBuffer* str = StringBuffer_new(NULL);
-
-	const Instruction* code = f->code;
-	int pc, n = f->sizecode;
-	int baseIndent = indent;
+	int locals = 0;
+	int ignoreNext = 0;
 
 	char* output;
 
@@ -1953,7 +1943,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 	StringBuffer_prune(str);
 
 	if (func_check == 1 && func_checking == 0) {
-		int func_check_result = FunctionCheck(f, funcnumstr, str);
+		FunctionCheck(f, funcnumstr, str);
 		TRY(RawAddStatement(F, str));
 	}
 
@@ -1972,7 +1962,6 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		Instruction i = code[pc];
 		OpCode o = GET_OPCODE(i);
 		int a = GETARG_A(i);
-		int sbc = GETARG_sBx(i);
 		int dest;
 		int real_end;
 
@@ -2009,6 +1998,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 			dest = pc + 1;
 		}
 #else
+		int sbc = GETARG_sBx(i);
 		dest = sbc + pc + 1;
 #endif
 		real_end = GetJmpAddr(F, pc + 1);
@@ -2382,7 +2372,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				}
 				TRY(AssignReg(F, a, "false", 0, 1));
 			} else {
-				int thenaddr = 0, endif = 0;
+				int thenaddr = 0;
 				char *test = NULL;
 				TRY(test = OutputBoolean(F, &thenaddr, NULL, 1));
 				TRY(AssignReg(F, a, test, 0, 0));
@@ -2413,7 +2403,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				/*
 				* assign boolean value
 				*/
-				int thenaddr = 0, endif = 0;
+				int thenaddr = 0;
 				char *test = NULL;
 				TRY(test = OutputBoolean(F, &thenaddr, NULL, 1));
 				TRY(AssignReg(F, a, test, 0, 0));
@@ -2983,12 +2973,11 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				ElseStart(ifstmt) = GetJmpAddr(F, dest); // reuse ElseStart as pc of endif
 			} else if (next_child && next_child->type == TFORLOOP_STMT
 				&& next_child->prep == pc ) { // jmp of generic for
-				// TODO 5.2 OP_TFORCALL
 				/*
 				* generic 'for'
 				*/
 				int i;
-				const char *generator, *control, *state;
+				const char *generator;
 				const char* vname[40];
 				AstStatement* tforstmt = NULL;
 
@@ -3000,8 +2989,6 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				c = GETARG_C(idest);
 
 				generator = GetR(F, a);
-				control = GetR(F, a + 2);
-				state = GetR(F, a + 1);
 				for (i=1; i<=c; i++) {
 					if (!IS_VARIABLE(a+2+i)) {
 						int i2;
@@ -3071,7 +3058,7 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 				fflush(stderr);
 				{
 				int boola = GETARG_A(code[pc+1]);
-				int thenaddr = 0, endif = 0;
+				int thenaddr = 0;
 				char* test = NULL;
 				/* skip */
 				const char* ra = REGISTER(boola);
@@ -3287,7 +3274,6 @@ LOGIC_NEXT_JMP:
 				char* test = NULL;
 				LogicExp* exp = NULL;
 				AstStatement* currStmt = F->currStmt;
-				AstStatement* parentStmt = NULL;
 				TRY(exp = MakeBoolean(F, &thenaddr, &endif));
 				TRY(test = WriteBoolean(exp, &thenaddr, &endif, 0));
 
@@ -3556,12 +3542,11 @@ LOGIC_NEXT_JMP:
 				int i;
 				int step;
 				const char *idxname = NULL;
-				const char *initial, *a1str, *endstr;
-				int stepLen;
+				const char *initial, *a1str;
 				AstStatement* forstmt = NULL;
 
 				TRY(initial = GetR(F, a));
-				TRY(endstr = GetR(F, a+2));
+				TRY(GetR(F, a+2));
 				TRY(a1str = GetR(F, a+1));
 
 				if (!IS_VARIABLE(a+3)) {
@@ -3594,7 +3579,6 @@ LOGIC_NEXT_JMP:
 				*/
 
 				step = atoi(REGISTER(a + 2));
-				stepLen = strlen(REGISTER(a + 2));
 
 				if (step == 1) {
 					StringBuffer_printf(str, "%s = %s, %s",

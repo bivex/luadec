@@ -115,10 +115,10 @@ void PrintBreakStatement(AstStatement* stmt, StringBuffer* buff, int indent) {
 	// "break;" and not the last statement of the block
 	if ((parent->sub_print_count + parent->comment_print_count + 1) < parent->sub->size) {
 		PrintIndent(buff, indent);
-		StringBuffer_addPrintf(buff, "do break end\n", stmt->code);
+		StringBuffer_add(buff, "do break end\n");
 	} else {
 		PrintIndent(buff, indent);
-		StringBuffer_addPrintf(buff, "break\n", stmt->code);
+		StringBuffer_add(buff, "break\n");
 	}
 }
 
