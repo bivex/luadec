@@ -1,21 +1,28 @@
 [submodule "LuaAssemblyTools"]
 	path = LuaAssemblyTools
 	url = https://github.com/mlnlover11/LuaAssemblyTools
+	ignore = untracked
 [submodule "ilua"]
 	path = ilua
 	url = https://github.com/ilua/ilua
+	ignore = untracked
 [submodule "memwatch"]
 	path = memwatch
 	url = https://github.com/viruscamp/memwatch
+	ignore = untracked
 [submodule "lua-5.1"]
 	path = lua-5.1
 	url = https://github.com/viruscamp/lua5
 	branch = 5.1
+	ignore = untracked
 [submodule "lua-5.2"]
 	path = lua-5.2
 	url = https://github.com/viruscamp/lua5
 	branch = 5.2
+	ignore = untracked
 [submodule "lua-5.3"]
 	path = lua-5.3
 	url = https://github.com/viruscamp/lua5
 	branch = 5.3
+	ignore = untracked
+

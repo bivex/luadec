@@ -1,0 +1,51 @@
+# Object files and libraries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# Executables
+*.exe
+*.out
+*.app
+luadec/luadec
+luadec/luareplace
+luadec/luaopswap
+
+# Generated headers and bytecode
+luadec/allopcodes*
+*.luac
+
+# Debug symbols & folders
+*.dSYM/
+*.pdb
+*.idb
+*.ilk
+
+# Visual Studio / MSVC build files & caches
+Debug/
+Release/
+ipch/
+.vs/
+*.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+*.VC.db
+
+# OS / Editor temporary files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+*~
+*.swp
+.vscode/
+.idea/
