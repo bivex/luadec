@@ -568,14 +568,41 @@ int luaU_guess_locals(Proto* f, int main) {
 #endif
 		case OP_TFORLOOP:
 #if LUA_VERSION_NUM == 504
-		case OP_TFORPREP:
 		case OP_VARARGPREP:
 		case OP_MMBIN:
 		case OP_MMBINI:
 		case OP_MMBINK:
 		case OP_TBC:
-#endif
 			break;
+		case OP_TFORPREP:
+		{
+			Instruction call_inst = f->code[dest - 1];
+			if (GET_OPCODE(call_inst) == OP_TFORCALL) {
+				int call_a = GETARG_A(call_inst);
+				int call_c = GETARG_C(call_inst);
+				setreg = call_a;
+				setregto = call_a + 3 + call_c;
+				loadreg = call_a;
+				loadregto = call_a + 3;
+				intlocfrom = call_a;
+				intlocto = call_a + 3 + call_c;
+				regassign[call_a] = pc + 1;
+				regassign[call_a+1] = pc + 1;
+				regassign[call_a+2] = pc + 1;
+				regassign[call_a+3] = pc + 1;
+				regblock[call_a] = dest + 1;
+				regblock[call_a+1] = dest + 1;
+				regblock[call_a+2] = dest + 1;
+				regblock[call_a+3] = dest + 1;
+				for (x = call_a + 4; x <= call_a + 3 + call_c; x++) {
+					regassign[x] = pc + 1;
+					regblock[x] = dest - 1;
+				}
+				addi(blocklist, dest - 1);
+			}
+			break;
+		}
+#endif
 		case OP_FORPREP:
 			loadreg = a;
 			loadregto = a+2;

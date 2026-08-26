@@ -1283,6 +1283,17 @@ void DeclareLocals(Function* F) {
 				continue;
 			}
 			// handle TFOR loops
+#if LUA_VERSION_NUM == 504
+			if (GET_OPCODE(instr) == OP_TFORPREP) {
+				Instruction call_inst = F->f->code[F->pc + 1 + GETARG_Bx(instr)];
+				int call_a = GETARG_A(call_inst);
+				int call_c = GETARG_C(call_inst);
+				if (r >= call_a && r <= call_a + 3 + call_c) {
+					F->f->locvars[i].startpc = F->pc + 1;
+					continue;
+				}
+			}
+#else
 			if (GET_OPCODE(instr) == OP_JMP) {
 				Instruction n2 = F->f->code[F->pc+1+GETARG_sBx(instr)];
 				//fprintf(stderr,"3 %d\n",F->pc+1+GETARG_sBx(instr));
@@ -1292,6 +1303,7 @@ void DeclareLocals(Function* F) {
 					continue;
 				}
 			}
+#endif
 			if ((F->Rinternal[r])) {
 				names[r] = luadec_strdup(LOCAL(i));
 				PENDING(r) = 0;
@@ -3378,7 +3390,7 @@ LOGIC_NEXT_JMP:
 		case OP_TFORPREP:
 		{
 			int i;
-			const char *generator;
+			char *generator;
 			const char* vname[40];
 			AstStatement* tforstmt = NULL;
 			int target_call = pc + 1 + bc;
@@ -3386,39 +3398,37 @@ LOGIC_NEXT_JMP:
 			int tf_a = GETARG_A(idest);
 			int tf_c = GETARG_C(idest);
 
-			generator = GetR(F, tf_a);
+			generator = luadec_strdup(GetR(F, tf_a));
+			for (i = tf_a; i <= tf_a + 3 + tf_c; i++) {
+				CALL(i) = 0;
+				PENDING(i) = 0;
+				RemoveFromSet(F->tpend, i);
+			}
+
 			for (i = 1; i <= tf_c; i++) {
 				int var_reg = tf_a + 3 + i;
-				if (!IS_VARIABLE(var_reg)) {
-					int i2, loopvars = 0;
-					vname[i-1] = NULL;
-					for (i2 = 0; i2 < f->sizelocvars; i2++) {
-						if (f->locvars[i2].startpc == pc + 1) {
-							loopvars++;
-							if (loopvars == i) {
-								vname[i-1] = LOCAL(i2);
-								break;
-							}
-						}
-					}
-					if (vname[i-1] == NULL) {
-						char tmp[16];
-						sprintf(tmp, "i_%d", i);
-						TRY(DeclareVariable(F, tmp, var_reg));
-						vname[i-1] = F->R[var_reg];
-					}
-				} else {
-					vname[i-1] = F->R[var_reg];
+				const char* name = NULL;
+				int locVarIndex = getLocVarIndex(f, var_reg + 1, pc + 2);
+				if (locVarIndex >= 0 && locVarIndex < f->sizelocvars) {
+					name = LOCAL(locVarIndex);
 				}
+				if (name == NULL) {
+					char tmp[16];
+					sprintf(tmp, "i_%d", i);
+					TRY(DeclareVariable(F, tmp, var_reg));
+				} else {
+					TRY(DeclareVariable(F, name, var_reg));
+				}
+				vname[i-1] = F->R[var_reg];
 				F->Rinternal[var_reg] = 1;
 			}
-			DeclarePendingLocals(F);
 
 			StringBuffer_printf(str, "%s", vname[0]);
 			for (i = 2; i <= tf_c; i++) {
 				StringBuffer_addPrintf(str, ", %s", vname[i-1]);
 			}
 			StringBuffer_addPrintf(str, " in %s", generator);
+			free(generator);
 
 			F->Rinternal[tf_a] = 1;
 			F->Rinternal[tf_a + 1] = 1;
