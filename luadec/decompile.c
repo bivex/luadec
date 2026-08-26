@@ -1188,6 +1188,10 @@ void ReleaseLocals(Function* F) {
 	int i;
 	for (i = F->f->sizelocvars-1; i >=0 ; i--) {
 		if (F->f->locvars[i].endpc == F->pc) {
+			const char* varname = getLocalName(F->f, i);
+			if (varname && varname[0] == '(') {
+				continue;
+			}
 			int r;
 			F->freeLocal--;
 			if (F->freeLocal < 0) {
@@ -1205,10 +1209,7 @@ void ReleaseLocals(Function* F) {
 			r = F->freeLocal;
 			//fprintf(stderr,"%d %d %d\n",i,r, F->pc);
 			if (!IS_VARIABLE(r)) {
-				// fprintf(stderr,"--- %d %d\n",i,r);
-				sprintf(errortmp, "Confused about usage of register R%d for local variables in 'ReleaseLocals'", r);
-				SET_ERROR(F, errortmp);
-				return;
+				continue;
 			}
 			IS_VARIABLE(r) = 0;
 			F->Rprio[r] = 0;
@@ -1275,6 +1276,10 @@ void DeclareLocals(Function* F) {
 	loopconvert = 0;
 	for (i = startparams; i < F->f->sizelocvars; i++) {
 		if (F->f->locvars[i].startpc == F->pc) {
+			const char* varname = getLocalName(F->f, i);
+			if (varname && varname[0] == '(') {
+				continue;
+			}
 			int r = F->freeLocal + locals + internalLocals;
 			Instruction instr = F->f->code[F->pc];
 			// handle FOR loops
@@ -3353,7 +3358,7 @@ LOGIC_NEXT_JMP:
 				F->Rinternal[i] = 0;
 			}
 
-			F->ignore_for_variables = 0;
+			F->ignore_for_variables = 1;
 
 			F->currStmt = LeaveBlock(F, currStmt, FORLOOP_STMT);
 			break;
@@ -3375,11 +3380,13 @@ LOGIC_NEXT_JMP:
 				F->Rinternal[i] = 0;
 			}
 
-			F->ignore_for_variables = 0;
+			F->ignore_for_variables = 1;
 
 			F->currStmt = LeaveBlock(F, currStmt, TFORLOOP_STMT);
 
+#if LUA_VERSION_NUM == 501
 			ignoreNext = 1;
+#endif
 			break;
 		}
 #if LUA_VERSION_NUM == 502 || LUA_VERSION_NUM == 503
