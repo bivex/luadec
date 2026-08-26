@@ -2266,10 +2266,18 @@ char* ProcessCode(Proto* f, int indent, int func_checking, char* funcnumstr) {
 		}
 		case OP_LFALSESKIP:
 		{
-			if (PENDING(a)) {
-				TRY(UnsetPending(F, a));
+			if (F->bools.size == 0) {
+				if (PENDING(a)) {
+					TRY(UnsetPending(F, a));
+				}
+				TRY(AssignReg(F, a, "false", 0, 1));
+			} else {
+				int thenaddr = 0, endif = 0;
+				char *test = NULL;
+				TRY(test = OutputBoolean(F, &thenaddr, NULL, 1));
+				TRY(AssignReg(F, a, test, 0, 0));
+				if (test) free(test);
 			}
-			TRY(AssignReg(F, a, "false", 0, 1));
 			ignoreNext = 1;
 			break;
 		}
